@@ -1,0 +1,55 @@
+{
+  "name": "voice-ui-best-practices-react-shadcn",
+  "version": "1.0.0",
+  "description": "A modern chat UI built with shadcn/ui, driven by Deepgram streaming STT (Flux) + TTS with turn-taking and barge-in, and answered by a real LLM via a streaming /api/chat endpoint.",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "dev": "concurrently -n server,client -c blue,green \"npm:dev:server\" \"npm:dev:client\"",
+    "dev:server": "node --watch server/server.mjs",
+    "dev:client": "vite",
+    "build": "vite build",
+    "preview": "node server/server.mjs",
+    "start": "npm run build && node server/server.mjs"
+  },
+  "keywords": [
+    "deepgram",
+    "shadcn",
+    "tailwindcss",
+    "voice",
+    "react",
+    "speech-to-text",
+    "text-to-speech",
+    "flux",
+    "realtime",
+    "voice-ui",
+    "barge-in",
+    "llm",
+    "chat"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@deepgram/sdk": "^5.5.0",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "dotenv": "^16.4.5",
+    "lucide-react": "^0.468.0",
+    "openai": "^4.77.0",
+    "radix-ui": "^1.6.6",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "tailwind-merge": "^2.6.0",
+    "tailwindcss-animate": "^1.0.7"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "autoprefixer": "^10.4.20",
+    "concurrently": "^9.1.0",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.17",
+    "vite": "^6.0.0"
+  }
+}

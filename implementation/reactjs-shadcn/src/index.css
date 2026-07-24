@@ -1,0 +1,122 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* shadcn/ui design tokens (zinc base). Light values on :root; the dark set is
+   applied automatically via prefers-color-scheme so there's no theme toggle to
+   wire — consistent with the other examples in this repo (Best practice #9).
+   The shadcn CLI's default is a `.dark` class; we use the media query instead. */
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 240 10% 3.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 240 10% 3.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 10% 3.9%;
+    --primary: 240 5.9% 10%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 240 4.8% 95.9%;
+    --secondary-foreground: 240 5.9% 10%;
+    --muted: 240 4.8% 95.9%;
+    --muted-foreground: 240 3.8% 46.1%;
+    --accent: 240 4.8% 95.9%;
+    --accent-foreground: 240 5.9% 10%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 240 5.9% 90%;
+    --input: 240 5.9% 90%;
+    --ring: 240 5.9% 10%;
+    --radius: 0.75rem;
+
+    /* Session-state accents (Best practice #2 — one visible state). */
+    --state-idle: 240 4% 60%;
+    --state-listening: 152 69% 41%;
+    --state-thinking: 35 92% 53%;
+    --state-speaking: 235 100% 65%;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --background: 240 10% 3.9%;
+      --foreground: 0 0% 98%;
+      --card: 240 8% 6%;
+      --card-foreground: 0 0% 98%;
+      --popover: 240 10% 3.9%;
+      --popover-foreground: 0 0% 98%;
+      --primary: 0 0% 98%;
+      --primary-foreground: 240 5.9% 10%;
+      --secondary: 240 3.7% 15.9%;
+      --secondary-foreground: 0 0% 98%;
+      --muted: 240 3.7% 15.9%;
+      --muted-foreground: 240 5% 64.9%;
+      --accent: 240 3.7% 15.9%;
+      --accent-foreground: 0 0% 98%;
+      --destructive: 0 72% 51%;
+      --destructive-foreground: 0 0% 98%;
+      --border: 240 3.7% 15.9%;
+      --input: 240 3.7% 15.9%;
+      --ring: 240 4.9% 83.9%;
+
+      --state-idle: 240 5% 55%;
+      --state-listening: 152 60% 48%;
+      --state-thinking: 35 92% 58%;
+      --state-speaking: 235 100% 72%;
+    }
+  }
+
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
+
+/* The mic-level ring and speaking-glow read two live CSS variables set inline by
+   VoiceInput.jsx (both 0..1): --mic drives the ring on the mic button while you
+   talk; --out drives a glow on the input while the agent speaks. Kept as plain
+   CSS (not utilities) because the values are dynamic. */
+@layer components {
+  /* The mic button only READS --mic; it must NOT declare a default here, or that
+     local value would shadow the one inherited from the .speak-glow wrapper
+     (where VoiceInput sets it inline) and freeze the ring at 0. Both --mic and
+     --out are defaulted on .speak-glow below. */
+  .mic-ring {
+    transition: box-shadow 90ms linear, border-color 120ms ease;
+  }
+  [data-state="listening"] .mic-ring {
+    border-color: hsl(var(--state-listening) / calc(0.35 + var(--mic) * 0.5));
+    box-shadow:
+      0 0 0 calc(1px + var(--mic) * 3px)
+        hsl(var(--state-listening) / calc(0.2 + var(--mic) * 0.45)),
+      0 0 calc(var(--mic) * 16px) hsl(var(--state-listening) / calc(var(--mic) * 0.55));
+  }
+
+  .speak-glow {
+    /* Defaults for BOTH live levels live on the wrapper. VoiceInput sets them
+       inline here; the mic button inherits --mic, the wrapper itself uses --out. */
+    --mic: 0;
+    --out: 0;
+    transition: box-shadow 90ms linear, border-color 120ms ease;
+  }
+  [data-state="speaking"] .speak-glow {
+    border-color: hsl(var(--state-speaking) / calc(0.4 + var(--out) * 0.5));
+    box-shadow:
+      inset 0 0 0 calc(var(--out) * 2px)
+        hsl(var(--state-speaking) / calc(0.25 + var(--out) * 0.45)),
+      inset 0 0 calc(6px + var(--out) * 26px)
+        hsl(var(--state-speaking) / calc(var(--out) * 0.5));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mic-ring,
+  .speak-glow {
+    transition: none;
+  }
+  .animate-state-pulse {
+    animation: none !important;
+  }
+}
