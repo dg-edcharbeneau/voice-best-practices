@@ -1,0 +1,372 @@
+/* Minimal, dependency-free styling. Theme-aware (light/dark) and respects
+   prefers-reduced-motion (Best practice #9). State-driven accents come from the
+   [data-state] attribute on #app, set by the UI layer. */
+
+:root {
+  --bg: #f7f8fa;
+  --panel: #ffffff;
+  --text: #14161a;
+  --muted: #626873;
+  --border: #e3e6ea;
+  --accent: #4b5cff;
+  --accent-contrast: #ffffff;
+  --idle: #9aa0aa;
+  --listening: #1fb46b;
+  --thinking: #f0a020;
+  --speaking: #4b5cff;
+  --error: #e5484d;
+  --radius: 14px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0e0f13;
+    --panel: #17191f;
+    --text: #eef0f4;
+    --muted: #9aa0aa;
+    --border: #262a31;
+    --accent: #7c8bff;
+    --accent-contrast: #0e0f13;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.5;
+}
+
+#app {
+  max-width: 680px;
+  margin: 0 auto;
+  padding: 2.5rem 1.25rem 4rem;
+}
+
+.hero h1 {
+  margin: 0 0 0.25rem;
+  font-size: 1.9rem;
+  letter-spacing: -0.02em;
+}
+
+.subtitle {
+  margin: 0 0 1.75rem;
+  color: var(--muted);
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.25rem;
+  margin-bottom: 1.25rem;
+}
+
+.panel-title {
+  margin: 0 0 0.75rem;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+/* --- status --------------------------------------------------------------- */
+/* Rendered inline in the chat input's controls row (see VoiceInput.jsx): dot +
+   label, compact enough to sit beside the icon buttons. */
+.status-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--idle);
+  flex: none;
+}
+
+[data-state="listening"] .dot {
+  background: var(--listening);
+  animation: pulse 1.4s ease-in-out infinite;
+}
+[data-state="thinking"] .dot {
+  background: var(--thinking);
+  animation: pulse 1s ease-in-out infinite;
+}
+[data-state="speaking"] .dot {
+  background: var(--speaking);
+  animation: pulse 0.8s ease-in-out infinite;
+}
+[data-state="connecting"] .dot {
+  background: var(--thinking);
+}
+[data-state="error"] .dot {
+  background: var(--error);
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.55;
+    transform: scale(0.8);
+  }
+}
+
+/* --- controls ------------------------------------------------------------- */
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.btn {
+  font: inherit;
+  font-weight: 600;
+  padding: 0.7rem 1.2rem;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  transition: background 120ms ease, opacity 120ms ease;
+}
+
+.btn:hover:not(:disabled) {
+  background: var(--border);
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: var(--accent-contrast);
+  border-color: transparent;
+}
+
+.btn-primary:hover:not(:disabled) {
+  opacity: 0.9;
+  background: var(--accent);
+}
+
+.btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.btn:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* --- transcript ----------------------------------------------------------- */
+.transcript {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 260px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.turn {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.6rem 0.85rem;
+  overflow-wrap: anywhere;
+}
+
+/* --- error / hint --------------------------------------------------------- */
+.error {
+  background: color-mix(in srgb, var(--error) 12%, transparent);
+  border: 1px solid var(--error);
+  color: var(--error);
+  padding: 0.75rem 1rem;
+  border-radius: 10px;
+  margin: 0 0 1.25rem;
+}
+
+.hint {
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+/* --- CopilotChat ---------------------------------------------------------- */
+/* Theme CopilotKit to match the rest of the demo. CopilotKit reads a set of
+   --copilot-kit-* custom properties; we map them onto our own palette so the
+   embedded chat inherits light/dark automatically. */
+.chat-panel {
+  padding-bottom: 1.25rem;
+}
+
+.copilot-chat {
+  --copilot-kit-primary-color: var(--accent);
+  --copilot-kit-contrast-color: var(--accent-contrast);
+  --copilot-kit-background-color: var(--panel);
+  --copilot-kit-input-background-color: var(--bg);
+  --copilot-kit-secondary-color: var(--bg);
+  --copilot-kit-secondary-contrast-color: var(--text);
+  --copilot-kit-separator-color: var(--border);
+  --copilot-kit-muted-color: var(--muted);
+
+  height: 440px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+/* The chat component fills the wrapper so its message list scrolls internally
+   rather than growing the page. */
+.copilot-chat .copilotKitChat {
+  height: 100%;
+}
+
+/* --- custom chat input (VoiceInput.jsx) ----------------------------------- */
+/* Replaces CopilotChat's default input via its `Input` prop: textarea + the
+   voice controls in one box. Themed with the demo's own variables. */
+.voice-input {
+  /* Live levels set inline by VoiceInput.jsx (both 0..1):
+     --mic → mic button ring (input); --out → box glow while the agent speaks. */
+  --mic: 0;
+  --out: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin: 0 0.75rem 0.75rem;
+  padding: 0.75rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  transition: border-color 120ms ease, box-shadow 90ms linear;
+}
+
+/* Agent speaking: the whole input box glows, sized by the playback level (--out),
+   mirroring the mic-level ring on the button. The glow is INSET (drawn inward
+   from the border) on purpose — the chat wrapper has overflow:hidden for its
+   rounded corners + internal scroll, which would clip an outward halo at the
+   edges and behind the messages above. An inset glow stays within the box. */
+[data-state="speaking"] .voice-input {
+  border-color: color-mix(
+    in srgb,
+    var(--speaking) calc(40% + var(--out) * 50%),
+    var(--border)
+  );
+  box-shadow:
+    inset 0 0 0 calc(var(--out) * 2px)
+      color-mix(in srgb, var(--speaking) calc(25% + var(--out) * 45%), transparent),
+    inset 0 0 calc(6px + var(--out) * 26px)
+      color-mix(in srgb, var(--speaking) calc(var(--out) * 50%), transparent);
+}
+
+.voice-input__text {
+  font: inherit;
+  color: var(--text);
+  background: transparent;
+  border: none;
+  outline: none;
+  resize: none;
+  min-height: 2.25rem;
+  max-height: 8rem;
+  line-height: 1.4;
+}
+
+.voice-input__text::placeholder {
+  color: var(--muted);
+}
+
+.voice-input__controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+/* Pushes Send/Stop to the right, voice buttons to the left. */
+.voice-input__spacer {
+  flex: 1;
+}
+
+/* Icon-only buttons: square, centered, with the icon inheriting button color. */
+.voice-input .btn-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem;
+  width: 2.25rem;
+  height: 2.25rem;
+}
+
+.voice-input .btn-icon svg {
+  flex: none;
+}
+
+/* The mic meter, consolidated onto the mic button as a glowing ring. Color
+   follows the session state ([data-state] on the app root); while listening, the
+   ring's width and opacity track --mic (inherited from .voice-input), so the
+   button visibly "breathes" with your voice. */
+.voice-input__mic {
+  transition: box-shadow 90ms linear, border-color 120ms ease;
+}
+
+[data-state="listening"] .voice-input__mic {
+  border-color: color-mix(
+    in srgb,
+    var(--listening) calc(35% + var(--mic) * 50%),
+    var(--border)
+  );
+  box-shadow:
+    0 0 0 calc(1px + var(--mic) * 3px)
+      color-mix(in srgb, var(--listening) calc(20% + var(--mic) * 45%), transparent),
+    0 0 calc(var(--mic) * 14px)
+      color-mix(in srgb, var(--listening) calc(var(--mic) * 55%), transparent);
+}
+
+/* --- small screens -------------------------------------------------------- */
+@media (max-width: 480px) {
+  #app {
+    padding: 1.5rem 1rem 3rem;
+  }
+
+  .hero h1 {
+    font-size: 1.55rem;
+  }
+
+  .panel {
+    padding: 1rem;
+  }
+
+  /* Stack the controls and let each button span the row for a big tap target. */
+  .controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .btn {
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dot {
+    animation: none !important;
+  }
+  /* Keep the level effects accurate but drop the smoothing animation. */
+  .voice-input,
+  .voice-input__mic {
+    transition: none;
+  }
+}

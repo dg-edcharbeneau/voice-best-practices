@@ -1,0 +1,49 @@
+{
+  "name": "voice-ui-best-practices-react-copilotkit",
+  "version": "1.0.0",
+  "description": "Voice-driven CopilotKit CopilotChat: Deepgram streaming STT (Flux) + TTS providing the ears and mouth, CopilotKit providing the brain (LLM) and the visible chat.",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "dev": "concurrently -n server,client -c blue,green \"npm:dev:server\" \"npm:dev:client\"",
+    "dev:server": "node --watch server/server.mjs",
+    "dev:client": "vite",
+    "build": "vite build",
+    "preview": "node server/server.mjs",
+    "start": "npm run build && node server/server.mjs"
+  },
+  "keywords": [
+    "deepgram",
+    "copilotkit",
+    "voice",
+    "react",
+    "speech-to-text",
+    "text-to-speech",
+    "flux",
+    "realtime",
+    "voice-ui",
+    "barge-in",
+    "llm",
+    "copilot"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@copilotkit/react-core": "^1.63.2",
+    "@copilotkit/react-ui": "^1.63.2",
+    "@copilotkit/runtime": "^1.63.2",
+    "@copilotkit/runtime-client-gql": "^1.63.2",
+    "@deepgram/sdk": "^5.5.0",
+    "dotenv": "^16.4.5",
+    "openai": "^4.77.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^9.1.0",
+    "vite": "^6.0.0"
+  }
+}

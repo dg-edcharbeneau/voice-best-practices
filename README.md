@@ -14,6 +14,7 @@ one; every example below implements them.
 |---|---|---|
 | [`examples/basic-html-js`](examples/basic-html-js) | Vanilla HTML/CSS/JS + a tiny Node token server. No bundler. | ✅ Ready |
 | [`examples/reactjs`](examples/reactjs) | React 19 + Vite (same behaviors, componentized). | ✅ Ready |
+| [`examples/reactjs-copilotkit`](examples/reactjs-copilotkit) | React 19 + Vite wired to CopilotKit's `CopilotChat` and a real LLM — voice in, voice out, plus a typeable chat. | ✅ Ready |
 | [`examples/blazor`](examples/blazor) | Blazor WebAssembly (.NET 10) + ASP.NET Core token host, using JS isolation for interop. | ✅ Ready |
 
 Each example is self-contained, with its own README and setup steps. Start with
