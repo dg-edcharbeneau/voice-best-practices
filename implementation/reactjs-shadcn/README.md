@@ -26,16 +26,15 @@ type** into the chat — it's the same conversation either way.
 
 ## How it flows
 
-```
- mic ─▶ Flux STT ─▶ EndOfTurn ─▶ append user message ─▶ POST /api/chat
-                                                              │
-                                                    LLM streams tokens
-                                                              │
-        Deepgram TTS ◀── full reply ◀── tokens fill the assistant bubble
-             │
-             ▼
-        gap-free playback ──(user speaks / barge-in button)──▶ barge-in:
-                                        flush audio + abort /api/chat (stops the LLM)
+```mermaid
+flowchart TB
+    mic["mic"] --> stt["Flux STT"]
+    stt -->|"EndOfTurn"| append["append user message"]
+    append --> chat["POST /api/chat"]
+    chat -->|"LLM streams tokens"| bubble["tokens fill the assistant bubble"]
+    bubble -->|"full reply"| tts["Deepgram TTS"]
+    tts --> player["gap-free playback"]
+    player -.->|"user speaks / barge-in button"| bargein["barge-in:<br/>flush audio + abort /api/chat (stops the LLM)"]
 ```
 
 ## How it maps to React

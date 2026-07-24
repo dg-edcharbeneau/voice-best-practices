@@ -19,16 +19,16 @@ where an LLM would slot in is marked in [`conversation.js`](public/src/conversat
 A voice UI is a state machine, not a series of callbacks. Model it explicitly
 and make the current state **visible** to the user at all times.
 
-```
-        Start                     user speaks
- idle ─────────▶ connecting ───▶ listening ◀──────────────┐
-   ▲                                │  │                    │
-   │ Stop                EndOfTurn  │  │ StartOfTurn        │ TurnResumed
-   │                                ▼  │ (while speaking)   │
-   └──────────────── speaking ◀── thinking                 │
-                        │  ▲          │                     │
-                        │  └──────────┘  audio playing      │
-                        └── barge-in ────────────────────────┘
+```mermaid
+stateDiagram-v2
+    [*] --> idle
+    idle --> connecting: Start
+    connecting --> listening: user speaks
+    listening --> thinking: EndOfTurn
+    thinking --> speaking: response ready
+    speaking --> thinking: audio playing
+    speaking --> idle: Stop
+    speaking --> listening: barge-in<br/>(StartOfTurn → TurnResumed)
 ```
 
 Implemented in [`conversation.js`](public/src/conversation.js) with a single

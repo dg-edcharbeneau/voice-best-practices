@@ -26,18 +26,15 @@ conversation either way.
 
 ## How it flows
 
-```
- mic ─▶ Flux STT ─▶ EndOfTurn ─▶ appendMessage(user)
-                                      │
-                                      ▼
-                         CopilotKit runtime ─▶ LLM
-                                      │  (streams reply)
-                                      ▼
-        Deepgram TTS ◀── assistant reply ◀── <CopilotChat> renders it
-             │
-             ▼
-        gap-free playback  ──(user speaks / "Stop speaking")──▶ barge-in:
-                                                 flush audio + stopGeneration()
+```mermaid
+flowchart TB
+    mic["mic"] --> stt["Flux STT"]
+    stt -->|"EndOfTurn"| append["appendMessage(user)"]
+    append --> runtime["CopilotKit runtime ─▶ LLM"]
+    runtime -->|"streams reply"| chat["&lt;CopilotChat&gt; renders it"]
+    chat -->|"assistant reply"| tts["Deepgram TTS"]
+    tts --> player["gap-free playback"]
+    player -.->|"user speaks / 'Stop speaking'"| bargein["barge-in:<br/>flush audio + stopGeneration()"]
 ```
 
 ## How it maps to React
