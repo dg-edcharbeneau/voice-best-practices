@@ -44,6 +44,14 @@ export function createConversation({ onState, onTranscript, onLevel, onError, re
   // AbortController for the response currently being produced, if any. Aborting
   // it cancels an in-flight LLM request (and its server-side generation).
   let responseAbort = null;
+  // True while a response is still being produced/streamed. While it's true, a
+  // drained audio queue is just a gap between sentences — not the end of the
+  // turn — so we don't fall back to "listening" yet.
+  let generating = false;
+  // Flushes sent to TTS but not yet acknowledged with a "Flushed" control
+  // message. Non-zero means more audio for this turn is still on its way, even
+  // if the player has momentarily run dry.
+  let outstandingFlushes = 0;
 
   function setState(next) {
     if (state === next) return;
@@ -57,14 +65,30 @@ export function createConversation({ onState, onTranscript, onLevel, onError, re
   // Done here in JS at the point of detection so the cut-off is instant
   // (Best practice #4 — barge-in is non-negotiable).
   function interrupt() {
+    if (state !== "speaking" && state !== "thinking") return;
     // Cancel any response still being produced (stops the LLM stream), then kill
     // audio that's already playing. Both halves matter: (1) stop more text/audio
-    // arriving, (2) stop what's already in the speakers.
+    // arriving, (2) stop what's already in the speakers. Invalidating the turn
+    // and clearing the flush counters guarantees a late reply — and any sentence
+    // still streaming in through the sink — is dropped.
+    activeTurnIndex = Number.NaN;
+    generating = false;
+    outstandingFlushes = 0;
     responseAbort?.abort();
-    if (player?.isPlaying) {
-      player.flush();
-      tts?.clear();
-    }
+    player?.flush();
+    tts?.clear();
+  }
+
+  // Decide whether playback for the current turn is truly finished. Because a
+  // responder streams TTS sentence-by-sentence, the player queue empties between
+  // sentences — that's a gap, not the end. We only return to "listening" once
+  // ALL of these hold: the responder has stopped generating, every flush has
+  // been acknowledged (so no more audio is coming), and the player has drained.
+  function maybeSettle() {
+    if (generating) return;
+    if (outstandingFlushes > 0) return;
+    if (player?.isPlaying) return;
+    if (state === "speaking" || state === "thinking") setState("listening");
   }
 
   // Click-driven barge-in: the same cut-off as voice barge-in, but triggered by
@@ -75,10 +99,7 @@ export function createConversation({ onState, onTranscript, onLevel, onError, re
   // commitTurn() reply is guaranteed to be discarded.
   function interruptResponse() {
     if (state !== "speaking" && state !== "thinking") return;
-    activeTurnIndex = Number.NaN;
-    responseAbort?.abort();
-    player?.flush();
-    tts?.clear();
+    interrupt();
     setState("listening");
   }
 
@@ -131,16 +152,26 @@ export function createConversation({ onState, onTranscript, onLevel, onError, re
     }
     activeTurnIndex = turnIndex;
     setState("thinking");
+    generating = true;
 
     // Fresh abort controller for this response so barge-in can cancel it.
     const controller = new AbortController();
     responseAbort = controller;
 
+    // Every flush is one unit of audio still owed to us — count it so
+    // maybeSettle() knows the turn isn't over just because the player ran dry
+    // between sentences. Deepgram acks each flush with a "Flushed" (see below).
+    const countedFlush = () => {
+      if (activeTurnIndex !== turnIndex) return;
+      tts?.flush();
+      outstandingFlushes++;
+    };
+
     try {
       const reply = await respond(clean, {
         signal: controller.signal,
         speak: (t) => tts?.speak(t),
-        flush: () => tts?.flush(),
+        flush: countedFlush,
       });
       // If the user barged in while we were "thinking", abandon this reply.
       if (activeTurnIndex !== turnIndex) return;
@@ -148,9 +179,10 @@ export function createConversation({ onState, onTranscript, onLevel, onError, re
       // the sink above (and returned nothing).
       if (typeof reply === "string" && reply.trim()) {
         tts?.speak(reply);
-        tts?.flush();
+        countedFlush();
       }
-      // player.onStart flips us to "speaking"; player.onEnd returns to "listening".
+      // player.onStart flips us to "speaking"; maybeSettle() returns us to
+      // "listening" once generation is done and all audio has played.
     } catch (err) {
       // A barge-in aborts the request on purpose — not an error to surface.
       if (err?.name === "AbortError") return;
@@ -158,6 +190,12 @@ export function createConversation({ onState, onTranscript, onLevel, onError, re
       setState("listening");
     } finally {
       if (responseAbort === controller) responseAbort = null;
+      // Only clear generating if this is still the active turn; a barge-in may
+      // have already started a new one that now owns the flag.
+      if (activeTurnIndex === turnIndex) {
+        generating = false;
+        maybeSettle();
+      }
     }
   }
 
@@ -170,11 +208,15 @@ export function createConversation({ onState, onTranscript, onLevel, onError, re
 
       player = createPlayer({
         sampleRate: TTS.sampleRate,
-        onStart: () => setState("speaking"),
-        onEnd: () => {
-          // Only fall back to listening if we're not mid-interruption.
-          if (state === "speaking" || state === "thinking") setState("listening");
+        // Ignore stray audio that lands after a barge-in (activeTurnIndex is
+        // NaN then); otherwise the first chunk of a sentence flips us to
+        // "speaking". Fires once per sentence, but setState is idempotent.
+        onStart: () => {
+          if (!Number.isNaN(activeTurnIndex)) setState("speaking");
         },
+        // The queue drains between sentences while we're still streaming, so we
+        // can't treat "empty" as "done" — maybeSettle() decides.
+        onEnd: () => maybeSettle(),
       });
       // Resume the audio context from within the click that called start().
       await player.resume();
@@ -182,6 +224,15 @@ export function createConversation({ onState, onTranscript, onLevel, onError, re
       tts = connectTTS({
         token,
         onAudio: (buf) => player.enqueue(buf),
+        // Deepgram acks each Flush with a "Flushed" once it has sent all the
+        // audio for it. That's how we know the last sentence's audio is in the
+        // player and the turn can settle.
+        onControl: (msg) => {
+          if (msg?.type === "Flushed" && outstandingFlushes > 0) {
+            outstandingFlushes--;
+            maybeSettle();
+          }
+        },
         onError: (e) => onError?.(e),
       });
 
@@ -209,6 +260,7 @@ export function createConversation({ onState, onTranscript, onLevel, onError, re
 
   async function stop() {
     // Full teardown (Best practice #8). Order matters: stop capturing first.
+    responseAbort?.abort();
     mic?.stop();
     stt?.finish();
     stt?.close();
@@ -217,6 +269,9 @@ export function createConversation({ onState, onTranscript, onLevel, onError, re
     mic = stt = tts = player = null;
     currentTurn = "";
     activeTurnIndex = -1;
+    generating = false;
+    outstandingFlushes = 0;
+    responseAbort = null;
     setState("idle");
   }
 

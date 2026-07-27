@@ -41,9 +41,10 @@ export function useChat() {
 
   // Core completion: append the user's message + an empty assistant placeholder,
   // POST the history to /api/chat, and stream the reply into the placeholder.
-  // Resolves with the full reply text. `spoken` only affects nothing here (the
-  // caller decides whether to speak the return value); it's kept for clarity.
-  const complete = useCallback(async (userText) => {
+  // Resolves with the full reply text. `onChunk`, when provided, is called with
+  // each streamed piece of text as it arrives — the voice orchestrator uses it
+  // to start speaking sentence-by-sentence instead of waiting for the full reply.
+  const complete = useCallback(async (userText, onChunk) => {
     const clean = (userText ?? "").trim();
     if (!clean) return "";
 
@@ -88,6 +89,8 @@ export function useChat() {
         const text = decoder.decode(value, { stream: true });
         if (!text) continue;
         full += text;
+        // Feed TTS as we go so audio can start on the first finished sentence.
+        onChunk?.(text);
         setMessages((prev) =>
           prev.map((m) => (m.id === assistantId ? { ...m, content: full } : m))
         );
@@ -120,8 +123,9 @@ export function useChat() {
     return full;
   }, []);
 
-  // Voice seam: the orchestrator awaits this on EndOfTurn and speaks the result.
-  const respond = useCallback((text) => complete(text), [complete]);
+  // Voice seam: the orchestrator awaits this on EndOfTurn and speaks the reply
+  // as it streams (onChunk), so audio begins on the first finished sentence.
+  const respond = useCallback((text, onChunk) => complete(text, onChunk), [complete]);
 
   // Typed seam: stream into the list, but don't return anything to speak.
   const sendTyped = useCallback(

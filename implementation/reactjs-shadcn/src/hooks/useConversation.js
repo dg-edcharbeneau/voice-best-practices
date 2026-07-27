@@ -39,8 +39,11 @@ export function useConversation({ respond, onResponseInterrupted } = {}) {
   const convoRef = useRef(null);
   if (convoRef.current === null) {
     convoRef.current = createConversation({
-      // Trampoline to the current respond; fall back to echo if none is wired yet.
-      respond: (text) => (respondRef.current ? respondRef.current(text) : text),
+      // Trampoline to the current respond; fall back to echo if none is wired
+      // yet. onChunk lets the orchestrator receive the reply as it streams so it
+      // can speak sentence-by-sentence.
+      respond: (text, onChunk) =>
+        respondRef.current ? respondRef.current(text, onChunk) : text,
       onResponseInterrupted: () => interruptedRef.current?.(),
       onState: (s) => setState(s),
       onLevel: (l) => setLevel(l),

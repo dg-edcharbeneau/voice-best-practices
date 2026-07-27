@@ -21,9 +21,43 @@ import { TTS } from "./config.js";
 
 // The "response" seam. This demo echoes the user's finished turn back through
 // TTS so the full realtime loop (mic -> STT -> turn detection -> TTS -> barge-in)
-// is exercised without needing an LLM. Swap this function for a call to your LLM
-// — it may return a string or a Promise<string>.
+// is exercised without needing an LLM. Swap this for a call to your LLM — it may
+// return a string, a Promise<string>, OR stream the reply chunk-by-chunk through
+// the onChunk callback (respond(text, onChunk)) so audio can start on the first
+// finished sentence instead of after the whole reply. A streaming responder
+// should also cancel its own request on barge-in (the turn-index guard already
+// stops any late chunks from being spoken).
 const echoResponder = (finalTranscript) => finalTranscript;
+
+// If a run of text arrives with no sentence boundary (a long list, a code
+// block, a rambling clause), don't sit on it forever — flush at a word break
+// once the buffer passes this length so audio keeps flowing.
+const MAX_SPEAK_BUFFER = 240;
+
+// Pull complete sentences out of a growing text buffer. A sentence ends at
+// . ! ? … or a newline. While text is still streaming we only cut at a
+// terminator that is *followed by whitespace*, so mid-token boundaries like
+// "3.14" or "v1.2" aren't split. Returns the finished sentences plus the
+// not-yet-complete remainder to carry into the next chunk.
+function extractSentences(buf) {
+  const sentences = [];
+  let start = 0;
+  for (let i = 0; i < buf.length; i++) {
+    const c = buf[i];
+    const isTerminator = c === "." || c === "!" || c === "?" || c === "…";
+    if (c === "\n" || isTerminator) {
+      const next = buf[i + 1];
+      // A newline is always a hard break; a terminator only counts once we can
+      // see it's followed by whitespace (otherwise wait for the next chunk).
+      if (c === "\n" || (next !== undefined && /\s/.test(next))) {
+        const piece = buf.slice(start, i + 1).trim();
+        if (piece) sentences.push(piece);
+        start = i + 1;
+      }
+    }
+  }
+  return { sentences, rest: buf.slice(start) };
+}
 
 export function createConversation({ onState, onTranscript, onLevel, onError, respond = echoResponder }) {
   let state = "idle";
@@ -36,6 +70,14 @@ export function createConversation({ onState, onTranscript, onLevel, onError, re
   let currentTurn = "";
   // Guards against a late response being spoken after the user barged in.
   let activeTurnIndex = -1;
+  // True while the responder is still streaming this turn's reply. While it's
+  // true, a drained audio queue is just a gap between sentences — not the end of
+  // the turn — so we don't fall back to "listening" yet.
+  let generating = false;
+  // Flushes sent to TTS but not yet acknowledged with a "Flushed" control
+  // message. Non-zero means more audio for this turn is still on its way, even
+  // if the player has momentarily run dry.
+  let outstandingFlushes = 0;
 
   function setState(next) {
     if (state === next) return;
@@ -44,26 +86,38 @@ export function createConversation({ onState, onTranscript, onLevel, onError, re
   }
 
   // --- barge-in ---------------------------------------------------------------
-  // Called when the user starts talking while the agent is (or is about to be)
-  // speaking. Stop playback locally AND tell the server to drop queued audio.
+  // Abandon the in-flight response: invalidate the turn so a late (or still
+  // streaming) reply is discarded, and cut audio locally AND on the server. Done
+  // at the point of detection so the cut-off is instant (Best practice #4). NaN
+  // never equals any real turn index, so a pending commitTurn() reply — and any
+  // sentence still arriving through onChunk — is guaranteed to be dropped.
   function interrupt() {
-    if (player?.isPlaying) {
-      player.flush();
-      tts?.clear();
-    }
+    if (state !== "speaking" && state !== "thinking") return;
+    activeTurnIndex = Number.NaN;
+    generating = false;
+    outstandingFlushes = 0;
+    player?.flush();
+    tts?.clear();
+  }
+
+  // Decide whether playback for the current turn is truly finished. Because we
+  // now stream TTS sentence-by-sentence, the player queue empties between
+  // sentences — that's a gap, not the end. We only return to "listening" once
+  // ALL of these hold: the responder has stopped generating, every flush has
+  // been acknowledged (so no more audio is coming), and the player has drained.
+  function maybeSettle() {
+    if (generating) return;
+    if (outstandingFlushes > 0) return;
+    if (player?.isPlaying) return;
+    if (state === "speaking" || state === "thinking") setState("listening");
   }
 
   // Click-driven barge-in: the same cut-off as voice barge-in, but triggered by
-  // the user pressing a Stop button instead of speaking. Unlike interrupt(), it
-  // also abandons a reply that's still being produced ("thinking") — there's no
-  // incoming turn to invalidate it, so we do it here — and always drops us back
-  // to "listening". NaN never equals any real turn index, so a pending
-  // commitTurn() reply is guaranteed to be discarded.
+  // the user pressing a Stop button instead of speaking, and it always drops us
+  // back to "listening" (there's no incoming turn to do it for us).
   function interruptResponse() {
     if (state !== "speaking" && state !== "thinking") return;
-    activeTurnIndex = Number.NaN;
-    player?.flush();
-    tts?.clear();
+    interrupt();
     setState("listening");
   }
 
@@ -73,7 +127,8 @@ export function createConversation({ onState, onTranscript, onLevel, onError, re
 
     switch (msg.event) {
       case "StartOfTurn":
-        // The user began a new turn. If the agent was talking, cut it off.
+        // The user began a new turn. If the agent was talking (or thinking),
+        // cut it off.
         interrupt();
         currentTurn = "";
         setState("listening");
@@ -116,16 +171,63 @@ export function createConversation({ onState, onTranscript, onLevel, onError, re
     }
     activeTurnIndex = turnIndex;
     setState("thinking");
-    try {
-      const reply = await respond(clean);
-      // If the user barged in while we were "thinking", abandon this reply.
-      if (activeTurnIndex !== turnIndex) return;
-      tts?.speak(reply);
+    generating = true;
+
+    // Buffer streamed text and hand TTS one sentence at a time, so audio starts
+    // as soon as the first sentence is ready instead of after the whole reply
+    // finishes. Each sentence is a Speak + Flush; new chunks only ever *append*
+    // audio — they never cut off what's already playing. Only a barge-in does
+    // that (see interrupt).
+    let pending = "";
+    let streamed = false;
+
+    // Send one speakable unit to TTS and count the flush so maybeSettle() knows
+    // audio is still outstanding. Guards against speaking into a barged-in turn.
+    const speak = (piece) => {
+      const t = (piece || "").trim();
+      if (!t || activeTurnIndex !== turnIndex) return;
+      tts?.speak(t);
       tts?.flush();
-      // player.onStart flips us to "speaking"; player.onEnd returns to "listening".
+      outstandingFlushes++;
+    };
+
+    // Each streamed chunk: append, speak any newly-complete sentences, and keep
+    // the trailing partial sentence for next time. The player flips us to
+    // "speaking" as the first sentence's audio arrives.
+    const onChunk = (chunk) => {
+      if (activeTurnIndex !== turnIndex) return;
+      streamed = true;
+      pending += chunk;
+      const { sentences, rest } = extractSentences(pending);
+      pending = rest;
+      for (const s of sentences) speak(s);
+      // Long unpunctuated run: flush at the last word break so we don't stall.
+      if (pending.length > MAX_SPEAK_BUFFER) {
+        const cut = pending.lastIndexOf(" ");
+        if (cut > 0) {
+          speak(pending.slice(0, cut));
+          pending = pending.slice(cut + 1);
+        }
+      }
+    };
+
+    try {
+      const reply = await respond(clean, onChunk);
+      // If the user barged in while we were generating, abandon this reply.
+      if (activeTurnIndex !== turnIndex) return;
+      // Speak whatever's left: the streamed tail, or — for a non-streaming
+      // responder that never called onChunk (like echo) — the whole reply.
+      speak(streamed ? pending : reply);
     } catch (err) {
       onError?.(err);
       setState("listening");
+    } finally {
+      // Only clear generating if this is still the active turn; a barge-in may
+      // have already started a new one that now owns the flag.
+      if (activeTurnIndex === turnIndex) {
+        generating = false;
+        maybeSettle();
+      }
     }
   }
 
@@ -138,11 +240,15 @@ export function createConversation({ onState, onTranscript, onLevel, onError, re
 
       player = createPlayer({
         sampleRate: TTS.sampleRate,
-        onStart: () => setState("speaking"),
-        onEnd: () => {
-          // Only fall back to listening if we're not mid-interruption.
-          if (state === "speaking" || state === "thinking") setState("listening");
+        // Ignore stray audio that lands after a barge-in (activeTurnIndex is
+        // NaN then); otherwise the first chunk of a sentence flips us to
+        // "speaking". Fires once per sentence, but setState is idempotent.
+        onStart: () => {
+          if (!Number.isNaN(activeTurnIndex)) setState("speaking");
         },
+        // The queue drains between sentences while we're still streaming, so we
+        // can't treat "empty" as "done" — maybeSettle() decides.
+        onEnd: () => maybeSettle(),
       });
       // Resume the audio context from within the click that called start().
       await player.resume();
@@ -150,6 +256,15 @@ export function createConversation({ onState, onTranscript, onLevel, onError, re
       tts = connectTTS({
         token,
         onAudio: (buf) => player.enqueue(buf),
+        // Deepgram acks each Flush with a "Flushed" once it has sent all the
+        // audio for it. That's how we know the last sentence's audio is in the
+        // player and the turn can settle.
+        onControl: (msg) => {
+          if (msg?.type === "Flushed" && outstandingFlushes > 0) {
+            outstandingFlushes--;
+            maybeSettle();
+          }
+        },
         onError: (e) => onError?.(e),
       });
 
@@ -185,6 +300,8 @@ export function createConversation({ onState, onTranscript, onLevel, onError, re
     mic = stt = tts = player = null;
     currentTurn = "";
     activeTurnIndex = -1;
+    generating = false;
+    outstandingFlushes = 0;
     setState("idle");
   }
 

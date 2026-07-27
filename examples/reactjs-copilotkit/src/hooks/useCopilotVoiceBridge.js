@@ -8,8 +8,9 @@
 //
 // This hook exposes the two seams the voice orchestrator needs (see
 // ../lib/conversation.js):
-//   • respond(text)            — a spoken turn ended; send it to the LLM and
-//                                resolve with the assistant's reply (to be spoken)
+//   • respond(text, onChunk)   — a spoken turn ended; send it to the LLM,
+//                                stream the reply out through onChunk as it
+//                                generates, and resolve with the full reply
 //   • onResponseInterrupted()  — the user barged in; stop the LLM immediately
 //
 // Why an observer effect instead of just awaiting `appendMessage`? `appendMessage`
@@ -17,7 +18,10 @@
 // message list). Reading that state the instant the promise resolves is racy —
 // the component may not have re-rendered yet. So `respond` returns a promise that
 // a render-driven effect settles once generation is done and the new assistant
-// message is actually present. Race-free by construction.
+// message is actually present. The same effect also watches the in-progress
+// assistant message grow and emits each new slice through onChunk, so the voice
+// orchestrator can start speaking on the first finished sentence instead of
+// waiting for the whole reply. Race-free by construction.
 //
 // ── CopilotKit version note (1.63.x) ────────────────────────────────────────
 // We read the chat through `useCopilotChatInternal`, not `useCopilotChat`. In
@@ -60,12 +64,15 @@ export function useCopilotVoiceBridge() {
   }, []);
 
   // respond(): the orchestrator calls this when Flux commits a finished turn.
-  const respond = useCallback((userText) => {
+  // onChunk receives each new slice of the reply as it streams.
+  const respond = useCallback((userText, onChunk) => {
     const { appendMessage, messages } = chatRef.current;
     // Remember which messages already exist so we can spot the *new* reply.
     const beforeIds = new Set((messages ?? []).map((m) => m.id));
     return new Promise((resolve, reject) => {
-      pending.current = { resolve, beforeIds };
+      // `emitted` tracks how many characters of the reply we've already streamed
+      // to onChunk, so each render only forwards the newly-arrived tail.
+      pending.current = { resolve, beforeIds, onChunk, emitted: 0 };
       appendMessage(
         new TextMessage({ role: Role.User, content: userText })
       ).catch((err) => {
@@ -89,14 +96,30 @@ export function useCopilotVoiceBridge() {
   // was still in flight doesn't leave respond() hanging forever.
   const cancelPending = useCallback(() => settle(""), [settle]);
 
-  // Render-driven observer: once generation settles, hand the newest assistant
-  // message to whoever is awaiting respond().
+  // Render-driven observer: stream the in-progress reply out through onChunk as
+  // it grows, then hand the full reply to whoever is awaiting respond() once
+  // generation settles.
   useEffect(() => {
-    if (!pending.current || isLoading) return;
-    const reply = [...(messages ?? [])]
+    const p = pending.current;
+    if (!p) return;
+    // The new assistant message for this turn — tracked even while it's still
+    // streaming (and possibly empty) so we can forward each token delta.
+    const msg = [...(messages ?? [])]
       .reverse()
-      .find((m) => isAssistantText(m) && !pending.current.beforeIds.has(m.id));
-    if (reply) settle(reply.content);
+      .find(
+        (m) =>
+          m?.role === "assistant" &&
+          typeof m.content === "string" &&
+          !p.beforeIds.has(m.id)
+      );
+    if (msg && msg.content.length > p.emitted) {
+      p.onChunk?.(msg.content.slice(p.emitted));
+      p.emitted = msg.content.length;
+    }
+    // Generation finished: resolve with the full reply. The orchestrator has
+    // already spoken the streamed chunks, so this return value is just the
+    // fallback for a non-streaming path.
+    if (!isLoading && isAssistantText(msg)) settle(msg.content);
   }, [messages, isLoading, settle]);
 
   return { respond, onResponseInterrupted, cancelPending };
