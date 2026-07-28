@@ -8,6 +8,38 @@ The behaviors are the point, and they're the same everywhere. The companion
 guide, [**BEST_PRACTICES.md**](BEST_PRACTICES.md), explains the *why* behind each
 one; every example below implements them.
 
+## The problem
+
+Wiring a microphone to a speech API and playing audio back is easy. Building a
+voice interface that actually feels *good* is not — and the hard parts are the
+same regardless of framework:
+
+- **Turn-taking is genuinely hard.** Knowing when a user has finished a thought
+  (versus just pausing) is a real signal-processing problem. Most demos fake it
+  with a fixed silence timer that either cuts people off or feels sluggish.
+- **Barge-in is usually missing.** A voice UI that can't be interrupted
+  mid-sentence feels broken, yet stopping playback *and* halting buffered audio
+  already in flight is fiddly to get right.
+- **The audio pipeline is full of traps.** Deprecated capture APIs that glitch
+  under load, sample-rate mismatches, gappy playback, echo from TTS bleeding
+  back into the mic and triggering false turns, empty frames that silently close
+  the stream.
+- **Security gets skipped.** The quickest path — shipping the API key to the
+  browser — leaks it to the world.
+- **State goes implicit.** Voice UIs are turn-taking state machines, but they're
+  often built from scattered booleans that contradict each other, leaving the
+  user unsure whether the app is even listening.
+
+The result is that everyone rebuilds the same voice UI from scratch, rediscovers
+the same pitfalls, and ships something subtly wrong. There's no canonical answer
+to *"what does a correct realtime voice interface actually do, and what does the
+code look like?"*
+
+This project is that answer: a set of framework-independent behaviors a voice UI
+should get right ([**BEST_PRACTICES.md**](BEST_PRACTICES.md)), each paired with
+working reference implementations across common stacks. Copy the one that matches
+your stack, or read the guide once and apply it anywhere.
+
 ## Examples
 
 | Example | Stack | Status |
