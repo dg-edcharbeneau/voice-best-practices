@@ -1,0 +1,511 @@
+/* =============================================================================
+   Popup Voice Assistant — self-contained styles.
+
+   Everything is scoped under .va-root so the widget can be dropped into any page
+   without a CSS framework and without leaking styles outward. The visual state
+   is driven entirely by [data-state] (Best practice #2): the accent color, the
+   status dot, the orb ring, and the speaking glow all read one variable that
+   changes with the machine state. Dark mode follows the OS (prefers-color-
+   scheme); all motion is disabled under prefers-reduced-motion (Best practice #9).
+   ============================================================================= */
+
+.va-root,
+.va-root * {
+  box-sizing: border-box;
+}
+
+.va-root {
+  position: fixed;
+  z-index: 2147483000;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 15px;
+  line-height: 1.45;
+
+  /* Light theme tokens */
+  --va-surface: #ffffff;
+  --va-surface-2: #f6f6f8;
+  --va-fg: #1a1a1e;
+  --va-muted: #6b7280;
+  --va-border: #e6e6ea;
+  --va-shadow: 0 16px 48px rgba(17, 17, 26, 0.18);
+  --va-radius: 22px;
+  --va-radius-sm: 14px;
+
+  /* State accents (overridden per [data-state] below). */
+  --va-accent: 232 60% 60%;
+}
+
+@media (prefers-color-scheme: dark) {
+  .va-root {
+    --va-surface: #17171c;
+    --va-surface-2: #202028;
+    --va-fg: #f3f3f5;
+    --va-muted: #a1a1aa;
+    --va-border: #2c2c35;
+    --va-shadow: 0 16px 48px rgba(0, 0, 0, 0.6);
+  }
+}
+
+/* --- Anchor positioning ---------------------------------------------------- */
+.va-root[data-anchor="bottom-left"] { bottom: 20px; left: 20px; }
+.va-root[data-anchor="bottom-right"] { bottom: 20px; right: 20px; }
+.va-root[data-anchor="top-left"] { top: 20px; left: 20px; }
+.va-root[data-anchor="top-right"] { top: 20px; right: 20px; }
+
+/* Grow the panel from the anchored corner. */
+.va-root[data-anchor$="right"] { align-items: flex-end; }
+
+/* --- State accents --------------------------------------------------------- */
+.va-root[data-state="idle"],
+[data-state="idle"] { --va-accent: 240 5% 62%; }
+.va-root[data-state="connecting"],
+[data-state="connecting"] { --va-accent: 35 92% 53%; }
+.va-root[data-state="listening"],
+[data-state="listening"] { --va-accent: 152 69% 41%; }
+.va-root[data-state="thinking"],
+[data-state="thinking"] { --va-accent: 35 92% 53%; }
+.va-root[data-state="speaking"],
+[data-state="speaking"] { --va-accent: 232 80% 64%; }
+.va-root[data-state="error"],
+[data-state="error"] { --va-accent: 0 72% 51%; }
+
+/* =============================================================================
+   Collapsed launcher pill  ("Voice Chat")
+   ============================================================================= */
+.va-launcher {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 20px 12px 14px;
+  border: none;
+  border-radius: 999px;
+  background: var(--va-surface);
+  color: var(--va-fg);
+  box-shadow: var(--va-shadow);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+  transition: transform 140ms ease, box-shadow 140ms ease;
+}
+.va-launcher:hover { transform: translateY(-1px); }
+.va-launcher-icon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  font-size: 17px;
+  color: #fff;
+  background:
+    radial-gradient(120% 120% at 30% 20%, #f4d35e 0%, #4cc9a4 42%, #4361ee 100%);
+}
+.va-launcher-label { font-size: 15px; }
+
+/* =============================================================================
+   Minimized-while-live status pill
+   ============================================================================= */
+.va-mini {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 18px 10px 10px;
+  border: none;
+  border-radius: 999px;
+  background: var(--va-surface);
+  color: var(--va-fg);
+  box-shadow: var(--va-shadow);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+.va-mini-orb {
+  position: relative;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  overflow: hidden;
+  flex: none;
+}
+.va-mini-text { display: flex; flex-direction: column; line-height: 1.25; }
+.va-mini-title { font-size: 15px; font-weight: 600; }
+.va-mini-status {
+  font-size: 13px;
+  color: hsl(var(--va-accent));
+  font-weight: 500;
+}
+
+/* =============================================================================
+   Expanded panel
+   ============================================================================= */
+.va-panel {
+  display: flex;
+  flex-direction: column;
+  width: min(380px, calc(100vw - 40px));
+  height: min(560px, calc(100vh - 40px));
+  background: var(--va-surface);
+  color: var(--va-fg);
+  border-radius: var(--va-radius);
+  box-shadow: var(--va-shadow);
+  overflow: hidden;
+}
+
+.va-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 14px 14px 8px;
+}
+
+.va-icon-btn {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border: none;
+  border-radius: 50%;
+  background: var(--va-surface-2);
+  color: var(--va-fg);
+  font-size: 18px;
+  cursor: pointer;
+  flex: none;
+  transition: background 120ms ease;
+}
+.va-icon-btn:hover { background: var(--va-border); }
+.va-icon-btn[aria-pressed="true"] {
+  background: hsl(var(--va-accent) / 0.15);
+  color: hsl(var(--va-accent));
+}
+
+/* --- Language select ------------------------------------------------------- */
+.va-lang { position: relative; }
+.va-lang-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--va-border);
+  border-radius: 999px;
+  background: var(--va-surface);
+  color: var(--va-fg);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.va-lang-trigger:disabled { opacity: 0.5; cursor: default; }
+.va-lang-flag { font-size: 18px; line-height: 1; }
+.va-lang-chevron { font-size: 16px; color: var(--va-muted); }
+.va-lang-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  min-width: 180px;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  background: var(--va-surface);
+  border: 1px solid var(--va-border);
+  border-radius: var(--va-radius-sm);
+  box-shadow: var(--va-shadow);
+  z-index: 5;
+}
+.va-lang-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 10px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--va-fg);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.va-lang-option:hover { background: var(--va-surface-2); }
+.va-lang-option.is-selected { color: hsl(var(--va-accent)); font-weight: 600; }
+
+/* --- Error ----------------------------------------------------------------- */
+.va-error {
+  margin: 0 16px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: hsl(0 72% 51% / 0.12);
+  color: hsl(0 72% 45%);
+  font-size: 13px;
+}
+@media (prefers-color-scheme: dark) {
+  .va-error { color: hsl(0 80% 72%); }
+}
+
+/* --- Body ------------------------------------------------------------------ */
+.va-panel-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.va-voice-view {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 22px;
+  padding: 12px 24px;
+}
+.va-tagline {
+  margin: 0;
+  text-align: center;
+  color: var(--va-muted);
+  font-size: 14px;
+}
+
+/* =============================================================================
+   The orb
+   ============================================================================= */
+.va-orb {
+  position: relative;
+  width: 168px;
+  height: 168px;
+  border: none;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  border-radius: 50%;
+  --mic: 0;
+  --out: 0;
+}
+.va-orb:disabled { cursor: default; }
+
+.va-orb-gradient,
+.va-mini-orb .va-orb-gradient {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background:
+    radial-gradient(120% 120% at 28% 22%, #f4d35e 0%, transparent 45%),
+    radial-gradient(120% 120% at 75% 30%, #4cc9f0 0%, transparent 55%),
+    radial-gradient(130% 130% at 55% 85%, #4361ee 0%, #3a0ca3 70%),
+    linear-gradient(135deg, #4cc9a4, #4361ee);
+  background-blend-mode: screen, screen, normal, normal;
+  animation: va-orb-spin 14s linear infinite;
+}
+
+/* Reactive ring: subtle by default; expands with mic input while listening and
+   glows with output level while speaking. */
+.va-orb-ring {
+  position: absolute;
+  inset: -6px;
+  border-radius: 50%;
+  box-shadow:
+    0 0 0 calc(2px + var(--mic) * 8px) hsl(var(--va-accent) / calc(0.18 + var(--mic) * 0.5)),
+    0 0 calc(12px + var(--out) * 40px) hsl(var(--va-accent) / calc(0.15 + var(--out) * 0.6));
+  transition: box-shadow 90ms linear;
+}
+
+.va-orb-core {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: grid;
+  place-items: center;
+  width: 74px;
+  height: 74px;
+  border-radius: 50%;
+  background: var(--va-surface);
+  color: var(--va-fg);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
+}
+.va-orb-icon { font-size: 30px; }
+
+/* Idle breathing; active pulse on the whole orb. */
+.va-orb { animation: va-breathe 4s ease-in-out infinite; }
+[data-state="listening"] .va-orb,
+[data-state="speaking"] .va-orb,
+[data-state="thinking"] .va-orb { animation: va-pulse 1.6s ease-in-out infinite; }
+
+/* =============================================================================
+   Status line
+   ============================================================================= */
+.va-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 17px;
+  font-weight: 500;
+  color: hsl(var(--va-accent));
+}
+.va-status-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: hsl(var(--va-accent));
+}
+.va-status-dot.is-pulsing { animation: va-dot-pulse 1.4s ease-in-out infinite; }
+.va-status-text { color: hsl(var(--va-accent)); }
+
+/* =============================================================================
+   Text chat view
+   ============================================================================= */
+.va-chat {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px 16px;
+}
+.va-chat-list { display: flex; flex-direction: column; gap: 10px; }
+.va-msg {
+  max-width: 82%;
+  padding: 9px 13px;
+  border-radius: 16px;
+  font-size: 14px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.va-msg-assistant {
+  align-self: flex-start;
+  background: var(--va-surface-2);
+  color: var(--va-fg);
+  border-bottom-left-radius: 5px;
+}
+.va-msg-user {
+  align-self: flex-end;
+  background: hsl(232 80% 64%);
+  color: #fff;
+  border-bottom-right-radius: 5px;
+}
+.va-msg-user.is-ghost { opacity: 0.55; }
+.va-msg.is-error { background: hsl(0 72% 51% / 0.15); color: hsl(0 72% 45%); }
+
+.va-typing { display: inline-flex; gap: 4px; padding: 3px 0; }
+.va-typing i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--va-muted);
+  animation: va-typing 1s ease-in-out infinite;
+}
+.va-typing i:nth-child(2) { animation-delay: 0.15s; }
+.va-typing i:nth-child(3) { animation-delay: 0.3s; }
+
+/* =============================================================================
+   Footer: composer + call button
+   ============================================================================= */
+.va-panel-footer {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  padding: 12px 16px 16px;
+}
+.va-composer {
+  flex: 1;
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  padding: 6px 6px 6px 14px;
+  border: 1px solid var(--va-border);
+  border-radius: 24px;
+  background: var(--va-surface);
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+.va-composer:focus-within { border-color: hsl(var(--va-accent) / 0.6); }
+.va-composer-input {
+  flex: 1;
+  border: none;
+  outline: none;
+  resize: none;
+  background: transparent;
+  color: var(--va-fg);
+  font: inherit;
+  font-size: 14px;
+  max-height: 120px;
+  padding: 6px 0;
+}
+.va-composer-input::placeholder { color: var(--va-muted); }
+.va-composer-send {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  flex: none;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--va-muted);
+  font-size: 17px;
+  cursor: pointer;
+}
+.va-composer-send:not(:disabled) { color: hsl(var(--va-accent)); }
+.va-composer-send:disabled { cursor: default; }
+
+.va-call-btn {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  flex: none;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 21px;
+  color: #fff;
+  background:
+    radial-gradient(120% 120% at 30% 20%, #f4d35e 0%, #4cc9a4 42%, #4361ee 100%);
+  box-shadow: 0 6px 18px rgba(67, 97, 238, 0.35);
+  transition: transform 120ms ease;
+}
+.va-call-btn:hover { transform: translateY(-1px); }
+.va-call-btn.is-live {
+  background: #111318;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+}
+@media (prefers-color-scheme: dark) {
+  .va-call-btn.is-live { background: #f3f3f5; color: #111318; }
+}
+.va-call-btn:disabled { opacity: 0.5; cursor: default; }
+
+/* =============================================================================
+   Focus visibility (Best practice #9)
+   ============================================================================= */
+.va-root :focus-visible {
+  outline: 2px solid hsl(var(--va-accent));
+  outline-offset: 2px;
+}
+
+/* =============================================================================
+   Animations
+   ============================================================================= */
+@keyframes va-orb-spin { to { transform: rotate(360deg); } }
+@keyframes va-breathe {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.02); }
+}
+@keyframes va-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.035); }
+}
+@keyframes va-dot-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+@keyframes va-typing {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.5; }
+  30% { transform: translateY(-4px); opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .va-orb,
+  .va-orb-gradient,
+  .va-orb-ring,
+  .va-status-dot,
+  .va-typing i,
+  .va-launcher {
+    animation: none !important;
+    transition: none !important;
+  }
+}

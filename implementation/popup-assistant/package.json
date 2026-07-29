@@ -1,0 +1,46 @@
+{
+  "name": "voice-ui-popup-assistant",
+  "version": "1.0.0",
+  "description": "A popup-style voice assistant prototype: corner-pinned launcher that expands into a voice-first chat (with a text fallback and language selector), powered entirely by Deepgram streaming STT (Flux + Nova-3) and TTS (Aura-2). No LLM key required — the brain is a canned stub.",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "dev": "concurrently -n server,client -c blue,green \"npm:dev:server\" \"npm:dev:client\"",
+    "dev:server": "node --watch server/server.mjs",
+    "dev:client": "vite",
+    "build": "vite build",
+    "preview": "node server/server.mjs",
+    "start": "npm run build && node server/server.mjs"
+  },
+  "keywords": [
+    "deepgram",
+    "voice",
+    "react",
+    "popup",
+    "widget",
+    "speech-to-text",
+    "text-to-speech",
+    "flux",
+    "nova-3",
+    "aura-2",
+    "multilingual",
+    "realtime",
+    "voice-ui",
+    "barge-in"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@deepgram/sdk": "^5.5.0",
+    "dotenv": "^16.4.5",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^9.1.0",
+    "vite": "^6.0.0"
+  }
+}
