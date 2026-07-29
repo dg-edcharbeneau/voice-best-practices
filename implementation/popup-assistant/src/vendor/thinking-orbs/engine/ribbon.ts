@@ -8,7 +8,11 @@ import { fibDir, makeProj, paint, radiusScale } from './core';
 export const drawRibbon: ModeDraw = (ctx, size, t, dark, o) => {
   const cx = size / 2;
   const cy = size / 2;
-  const R = (size / 2) * 0.78;
+  // `energy` (0..1, the live eased TTS output level) drives the sash so the
+  // "composing" orb sings with the output voice: the band swells, its
+  // undulation deepens, and the strands brighten as the volume rises.
+  const energy = Math.min(1, Math.max(0, o.energy ?? 0));
+  const R = (size / 2) * 0.78 * (1 + 0.07 * energy);
   // spin scales the 3D tumble; spin=0 freezes the band's orientation,
   // leaving only the traveling undulation
   const spin = o.spin ?? 1;
@@ -47,9 +51,12 @@ export const drawRibbon: ModeDraw = (ctx, size, t, dark, o) => {
     for (let k = 0; k < segs; k++) {
       const a = (k / segs) * 2 * Math.PI;
       // the undulation: two traveling waves along the band; wobMul
-      // scales the deformation — 0 is a clean band
+      // scales the deformation — 0 is a clean band. Louder output deepens
+      // the waves (energy) so the sash visibly reacts to the voice.
       const wob =
-        (0.16 * Math.sin(a * 3 - t * 1.7 + w * 0.22) + 0.07 * Math.sin(a * 5 + t * 1.1)) * (o.wobMul ?? 1);
+        (0.16 * Math.sin(a * 3 - t * 1.7 + w * 0.22) + 0.07 * Math.sin(a * 5 + t * 1.1)) *
+        (o.wobMul ?? 1) *
+        (1 + 1.1 * energy);
       const off = laneOff + wob;
       const x = ux * Math.cos(a) + vx * Math.sin(a) + nx * off;
       const y = uy * Math.cos(a) + vy * Math.sin(a) + ny * off;
@@ -61,8 +68,8 @@ export const drawRibbon: ModeDraw = (ctx, size, t, dark, o) => {
         x: px,
         y: py,
         z: zr,
-        r: ((o.rBase ?? 1.1) + (o.rDepth ?? 1.7) * depth) * (1 - 0.25 * edge) * rs,
-        white: 0.52 - 0.44 * depth + 0.18 * edge,
+        r: ((o.rBase ?? 1.1) + (o.rDepth ?? 1.7) * depth) * (1 - 0.25 * edge) * (1 + 0.18 * energy) * rs,
+        white: Math.min(1, 0.52 - 0.44 * depth + 0.18 * edge + 0.2 * energy),
         a: 0.4 + 0.6 * depth
       });
     }

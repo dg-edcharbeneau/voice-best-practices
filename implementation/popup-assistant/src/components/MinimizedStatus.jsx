@@ -1,6 +1,6 @@
 import { STATE_LABEL } from "../lib/preflight.js";
 import { ThinkingOrb } from "../vendor/thinking-orbs";
-import { isActive } from "./VoiceOrb.jsx";
+import { ORB_STATE } from "./VoiceOrb.jsx";
 
 // The minimized-while-live state (mock #2): a small floating pill showing a tiny
 // live orb, the "Voice chat" label, and the current status ("Listening…"). The
@@ -17,10 +17,9 @@ export function MinimizedStatus({ state, onExpand }) {
     >
       <span className="va-mini-orb" aria-hidden="true">
         <ThinkingOrb
-          state="logo"
+          state={ORB_STATE[state] ?? "working"}
           size={20}
           theme="auto"
-          dotActive={isActive(state)}
           aria-hidden="true"
         />
       </span>
