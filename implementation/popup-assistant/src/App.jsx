@@ -34,8 +34,7 @@ export default function App() {
         </p>
       </main>
 
-      {/* The one line a developer actually adds to their app. */}
-      <VoiceAssistant anchor="bottom-left" defaultLanguage="en" />
+      <VoiceAssistant anchor="bottom-right" defaultLanguage="en" />
     </div>
   );
 }

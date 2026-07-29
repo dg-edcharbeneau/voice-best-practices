@@ -93,8 +93,16 @@ server/server.mjs   mint Deepgram tokens + stub /api/chat + serve the build
 ```
 
 The UI is a pure projection of the orchestrator’s `state` via a single
-`data-state` attribute (Best practice #2): the accent color, status dot, orb
-ring, and speaking glow all follow it.
+`data-state` attribute (Best practice #2): the accent color, status dot, and orb
+ring all follow it.
+
+The status orb is the **[thinking-orbs](https://github.com/dg-edcharbeneau/thinking-orbs)**
+canvas component (MIT), vendored under [`src/vendor/thinking-orbs/`](src/vendor/thinking-orbs/)
+so the widget stays dependency-free. It uses a locally-added **`logo` state**
+that arranges the dots into the **Deepgram logomark** (a dotted halftone). While
+a session is live the arrangement eases a **quarter-turn clockwise**; a
+level-reactive ring around it shows live mic/output level (Best practice #5). The
+exact voice state is carried by the status text, not the orb.
 
 ## Best practices in play
 

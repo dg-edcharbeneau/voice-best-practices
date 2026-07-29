@@ -1,23 +1,24 @@
-import { MicIcon } from "./icons.jsx";
+import { ThinkingOrb } from "../vendor/thinking-orbs";
 
-// The gradient status orb — the voice-first centerpiece (see the mocks).
+// Whether a session is live — used to rotate the logo arrangement. Exported so
+// the minimized pill shares the exact same rule.
+export const isActive = (state) => state !== "idle" && state !== "error";
+
+// The voice-first centerpiece. The dotted thinking-orb canvas IS the orb,
+// arranged into the Deepgram logomark (the vendored `logo` state). We wrap it in
+// a button and keep a level-reactive ring around it so the mic input (and the
+// agent's output) still register visually (Best practice #5). The orb canvas
+// auto-follows theme and reduced-motion on its own.
 //
-// It is BOTH a control and a live status display:
-//   • idle/error       → a phone icon; clicking starts the session
-//   • speaking/thinking → clicking barges in (cuts the reply)
-//   • listening        → a mic icon that reacts to your voice level
-//
-// Two live levels drive the visuals via inline CSS vars (both 0..1):
-//   --mic  → the ring pulse while you talk (input level)
-//   --out  → the glow while the agent talks (output level)
-// Colors come from [data-state] on the panel root (see popup.css). The orb is
-// aria-hidden decoration; the button wrapper carries the accessible label and
-// the text status lives in StatusLine (Best practice #9).
+// It is also the control: click to start when idle, stop while listening, or
+// barge in while the assistant is responding (the label passed in says which).
 export function VoiceOrb({ state, level, outputLevel, onClick, label, disabled }) {
   const micLevel = state === "listening" ? Math.min(1, level * 3) : 0;
   const outLevel = state === "speaking" ? Math.min(1, outputLevel * 4) : 0;
 
-  const Icon = MicIcon;
+  // A live session turns the logomark a quarter-turn clockwise; idle keeps it
+  // upright.
+  const active = isActive(state);
 
   return (
     <button
@@ -29,11 +30,20 @@ export function VoiceOrb({ state, level, outputLevel, onClick, label, disabled }
       title={label}
       style={{ "--mic": micLevel.toFixed(3), "--out": outLevel.toFixed(3) }}
     >
-      <span className="va-orb-gradient" aria-hidden="true" />
       <span className="va-orb-ring" aria-hidden="true" />
-      <span className="va-orb-core" aria-hidden="true">
-        <Icon className="va-orb-icon" />
-      </span>
+      <ThinkingOrb
+        className="va-orb-canvas"
+        state="logo"
+        size={64}
+        theme="auto"
+        dotActive={active}
+        energy={outLevel}
+        eyes={state === "speaking" || state === "listening" || state === "thinking"}
+        aria-hidden="true"
+        // Backing store is 64·dpr (128px on retina); display at 128 for a 1:1,
+        // crisp render at a size that fills the panel.
+        style={{ width: 128, height: 128 }}
+      />
     </button>
   );
 }

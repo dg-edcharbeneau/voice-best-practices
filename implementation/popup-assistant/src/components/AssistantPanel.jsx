@@ -32,17 +32,20 @@ export function AssistantPanel({
   const responding = state === "speaking" || state === "thinking";
   const reconnecting = state === "connecting";
 
-  // The orb is start button, barge-in button, and status display in one.
+  // The orb is start button, barge-in button, stop button, and status display
+  // in one: start when idle, barge in while the assistant is responding, and
+  // stop listening (end the session) while listening.
   const onOrbClick = () => {
     if (state === "idle" || state === "error") onStart();
     else if (responding) onBargeIn();
+    else onEnd(); // listening / connecting → stop the input
   };
   const orbLabel =
     state === "idle" || state === "error"
       ? "Start voice chat"
       : responding
         ? "Stop the assistant (barge-in)"
-        : "Listening — just talk";
+        : "Stop listening";
 
   return (
     <section className="va-panel" data-state={state} aria-label="Voice Chat">

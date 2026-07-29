@@ -96,8 +96,7 @@
   border-radius: 50%;
   font-size: 17px;
   color: #fff;
-  background:
-    radial-gradient(120% 120% at 30% 20%, #f4d35e 0%, #4cc9a4 42%, #4361ee 100%);
+  background: #4361ee;
 }
 .va-launcher-label { font-size: 15px; }
 
@@ -119,11 +118,10 @@
   text-align: left;
 }
 .va-mini-orb {
-  position: relative;
-  width: 38px;
-  height: 38px;
-  border-radius: 50%;
-  overflow: hidden;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
   flex: none;
 }
 .va-mini-text { display: flex; flex-direction: column; line-height: 1.25; }
@@ -269,8 +267,10 @@
    ============================================================================= */
 .va-orb {
   position: relative;
-  width: 168px;
-  height: 168px;
+  display: grid;
+  place-items: center;
+  width: 148px;
+  height: 148px;
   border: none;
   background: transparent;
   padding: 0;
@@ -278,56 +278,26 @@
   border-radius: 50%;
   --mic: 0;
   --out: 0;
+  animation: va-breathe 5s ease-in-out infinite;
 }
 .va-orb:disabled { cursor: default; }
 
-.va-orb-gradient,
-.va-mini-orb .va-orb-gradient {
-  position: absolute;
-  inset: 0;
-  border-radius: 50%;
-  background:
-    radial-gradient(120% 120% at 28% 22%, #f4d35e 0%, transparent 45%),
-    radial-gradient(120% 120% at 75% 30%, #4cc9f0 0%, transparent 55%),
-    radial-gradient(130% 130% at 55% 85%, #4361ee 0%, #3a0ca3 70%),
-    linear-gradient(135deg, #4cc9a4, #4361ee);
-  background-blend-mode: screen, screen, normal, normal;
-  animation: va-orb-spin 14s linear infinite;
-}
+/* The dotted thinking-orb canvas sits above the reactive ring. */
+.va-orb-canvas { position: relative; z-index: 1; }
 
 /* Reactive ring: subtle by default; expands with mic input while listening and
-   glows with output level while speaking. */
+   glows with output level while speaking (Best practice #5). It hugs the
+   canvas, behind it, so the dots read as "energized" by your voice. */
 .va-orb-ring {
   position: absolute;
-  inset: -6px;
+  width: 128px;
+  height: 128px;
   border-radius: 50%;
   box-shadow:
-    0 0 0 calc(2px + var(--mic) * 8px) hsl(var(--va-accent) / calc(0.18 + var(--mic) * 0.5)),
-    0 0 calc(12px + var(--out) * 40px) hsl(var(--va-accent) / calc(0.15 + var(--out) * 0.6));
+    0 0 0 calc(1px + var(--mic) * 8px) hsl(var(--va-accent) / calc(0.14 + var(--mic) * 0.5)),
+    0 0 calc(10px + var(--out) * 42px) hsl(var(--va-accent) / calc(0.12 + var(--out) * 0.6));
   transition: box-shadow 90ms linear;
 }
-
-.va-orb-core {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  display: grid;
-  place-items: center;
-  width: 74px;
-  height: 74px;
-  border-radius: 50%;
-  background: var(--va-surface);
-  color: var(--va-fg);
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
-}
-.va-orb-icon { font-size: 30px; }
-
-/* Idle breathing; active pulse on the whole orb. */
-.va-orb { animation: va-breathe 4s ease-in-out infinite; }
-[data-state="listening"] .va-orb,
-[data-state="speaking"] .va-orb,
-[data-state="thinking"] .va-orb { animation: va-pulse 1.6s ease-in-out infinite; }
 
 /* =============================================================================
    Status line
@@ -454,8 +424,7 @@
   cursor: pointer;
   font-size: 21px;
   color: #fff;
-  background:
-    radial-gradient(120% 120% at 30% 20%, #f4d35e 0%, #4cc9a4 42%, #4361ee 100%);
+  background: #4361ee;
   box-shadow: 0 6px 18px rgba(67, 97, 238, 0.35);
   transition: transform 120ms ease;
 }
@@ -480,14 +449,9 @@
 /* =============================================================================
    Animations
    ============================================================================= */
-@keyframes va-orb-spin { to { transform: rotate(360deg); } }
 @keyframes va-breathe {
   0%, 100% { transform: scale(1); }
   50% { transform: scale(1.02); }
-}
-@keyframes va-pulse {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.035); }
 }
 @keyframes va-dot-pulse {
   0%, 100% { opacity: 1; }
@@ -499,8 +463,9 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  /* The thinking-orb canvas handles its own reduced-motion (a static frame);
+     here we only quiet the CSS-driven chrome. */
   .va-orb,
-  .va-orb-gradient,
   .va-orb-ring,
   .va-status-dot,
   .va-typing i,

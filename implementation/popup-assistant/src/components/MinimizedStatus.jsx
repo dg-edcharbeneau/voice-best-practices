@@ -1,9 +1,12 @@
 import { STATE_LABEL } from "../lib/preflight.js";
+import { ThinkingOrb } from "../vendor/thinking-orbs";
+import { isActive } from "./VoiceOrb.jsx";
 
 // The minimized-while-live state (mock #2): a small floating pill showing a tiny
 // live orb, the "Voice chat" label, and the current status ("Listening…"). The
 // session keeps running while minimized — teardown only happens on an explicit
-// End/Close (Best practice #8). Clicking re-expands the panel.
+// End/Close (Best practice #8). Clicking re-expands the panel. The orb is the
+// thinking-orb's inline (size 20) preset, running the same state as the panel.
 export function MinimizedStatus({ state, onExpand }) {
   return (
     <button
@@ -13,7 +16,13 @@ export function MinimizedStatus({ state, onExpand }) {
       aria-label="Expand Voice Chat"
     >
       <span className="va-mini-orb" aria-hidden="true">
-        <span className="va-orb-gradient" />
+        <ThinkingOrb
+          state="logo"
+          size={20}
+          theme="auto"
+          dotActive={isActive(state)}
+          aria-hidden="true"
+        />
       </span>
       <span className="va-mini-text">
         <span className="va-mini-title">Voice chat</span>
