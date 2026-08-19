@@ -23,6 +23,7 @@ import { fileURLToPath } from "node:url";
 import dotenv from "dotenv";
 import { DeepgramClient } from "@deepgram/sdk";
 import OpenAI from "openai";
+import { SYSTEM_PROMPT } from "./prompt.mjs";
 
 // Load .env. `dotenvFile` is the PARSED file contents; we read the LLM settings
 // from it directly (below) rather than from process.env. Why: a global
@@ -54,13 +55,6 @@ const OPENAI_BASE_URL = dotenvFile.OPENAI_BASE_URL || "https://api.openai.com/v1
 // come from the shell).
 delete process.env.OPENAI_API_KEY;
 delete process.env.OPENAI_BASE_URL;
-
-// The assistant's persona. Because replies are spoken aloud, steer the model
-// toward short, speech-friendly answers (no markdown, lists, code, or emoji).
-const SYSTEM_PROMPT =
-  "You are a concise, friendly voice assistant. Your replies are spoken aloud, " +
-  "so keep them to one to three short sentences and avoid markdown, bullet " +
-  "lists, code blocks, and emoji.";
 
 // Fail fast with actionable messages — this demo needs BOTH keys.
 const missing = [];
@@ -172,6 +166,9 @@ function handleChat(req, res) {
           model: OPENAI_MODEL,
           stream: true,
           messages: [
+            // The persona lives in ./prompt.mjs — see the note there on why a
+            // voice prompt is its own thing (everything here gets spoken aloud,
+            // so markdown and stage directions get read out literally).
             { role: "system", content: SYSTEM_PROMPT },
             // Only forward the fields the API expects.
             ...messages.map((m) => ({ role: m.role, content: m.content })),

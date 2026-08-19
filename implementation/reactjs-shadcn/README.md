@@ -52,6 +52,7 @@ and the LLM call live only at the edges.
 | React seam — callbacks → state, one instance, teardown | [`src/hooks/useConversation.js`](src/hooks/useConversation.js) |
 | **Brain + message store** — `respond`, `sendTyped`, barge-in abort | [`src/hooks/useChat.js`](src/hooks/useChat.js) |
 | **Streaming LLM endpoint** (holds the LLM key) | [`server/server.mjs`](server/server.mjs) (`POST /api/chat`) |
+| **System prompt / persona** (voice-first formatting rules) | [`server/prompt.mjs`](server/prompt.mjs) |
 | UI — chat card, bubbles, composer | [`src/App.jsx`](src/App.jsx), [`src/components/`](src/components/) |
 | **shadcn/ui components** (Button, Card, ScrollArea, Avatar, …) | [`src/components/ui/`](src/components/ui/) |
 
@@ -171,6 +172,40 @@ works by setting `OPENAI_BASE_URL` and `OPENAI_MODEL` in `.env`. For a
 non-compatible provider, swap the `openai.chat.completions.create(...)` call in
 [`server/server.mjs`](server/server.mjs) for that provider's streaming API and
 keep writing text chunks to the response — the client just reads a text stream.
+
+## The system prompt
+
+The persona lives in its own module, [`server/prompt.mjs`](server/prompt.mjs) —
+not inline in the server — because a voice prompt is a different genre from a
+chat prompt and gets iterated on far more often than the transport around it.
+Every reply is read aloud, so markdown, bracketed directions like `[pause]`, and
+bullet lists are all pronounced literally: the formatting rules in that file are
+load-bearing, not stylistic.
+
+It's assembled from named blocks so the reusable half and the product-specific
+half are obvious:
+
+| Block | Keep or replace |
+|---|---|
+| `FORMATTING`, `CONVERSATION_STYLE`, `SPEAKING_STYLE` | true of any spoken assistant — keep as-is |
+| `IDENTITY`, `SUBSTANCE`, `BOUNDARIES` | this demo's product copy — replace with yours |
+
+`server.mjs` imports the ready-made `SYSTEM_PROMPT`. When you have per-session
+facts to fold in, call the builder instead:
+
+```js
+import { buildSystemPrompt } from "./prompt.mjs";
+
+const system = buildSystemPrompt({
+  userName: "Ada",
+  notes: "They're on the Pro plan and opened the pricing page before this.",
+});
+```
+
+`BOUNDARIES` also tells the model, explicitly, that it has **no tools** — no
+search, no weather, no memory — because `/api/chat` wires none up. Say nothing
+about capabilities you didn't build, or the model will cheerfully invent the
+answer out loud.
 
 ## Streaming TTS (optional upgrade)
 
