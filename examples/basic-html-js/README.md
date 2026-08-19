@@ -9,7 +9,7 @@ For the *why* behind every behavior, see the shared guide:
 
 The demo captures your microphone, transcribes it live with **Deepgram Flux**
 (`/v2/listen`), detects when you finish a turn, and speaks your words back with
-**Deepgram Speak** (`/v1/speak`). It supports **start/stop**, **voice-activity
+**Deepgram Flux TTS** (`/v2/speak`). It supports **start/stop**, **voice-activity
 feedback**, and **barge-in** (talk over the playback and it stops instantly).
 
 > Direct STT/TTS — **not** the Voice Agent platform. There's no LLM; the demo
@@ -37,7 +37,7 @@ flowchart TB
     end
     subgraph DG["Deepgram - wss://api.deepgram.com"]
         flux["Flux STT: /v2/listen"]
-        speak["Speak TTS: /v1/speak"]
+        speak["Flux TTS: /v2/speak"]
     end
     token -->|"GET /api/token"| endpoint
     endpoint --> sdk
@@ -98,7 +98,7 @@ speak. Pause, and it repeats your turn. Talk over it to trigger barge-in.
 Set in `.env` (see [`.env.example`](.env.example)): `DEEPGRAM_API_KEY`, `PORT`,
 `TOKEN_TTL_SECONDS`. Models and sample rates live in
 [`public/src/config.js`](public/src/config.js) (default STT `flux-general-en`
-@ 16 kHz, TTS `aura-2-thalia-en` @ 24 kHz).
+@ 16 kHz, TTS `flux-haley-en` @ 24 kHz).
 
 ## Make it a real assistant
 

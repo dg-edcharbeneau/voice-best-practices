@@ -16,7 +16,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createConversation } from "../lib/conversation.js";
 import { friendlyError, preflight } from "../lib/preflight.js";
-import { DEFAULT_LANGUAGE } from "../lib/config.js";
+import { DEFAULT_LANGUAGE, VOICE_PICKER_LANGUAGE, getVoiceConfig } from "../lib/config.js";
 
 const EMPTY_TRANSCRIPT = { committed: [], interim: "" };
 
@@ -30,6 +30,12 @@ export function useConversation({
   const [level, setLevel] = useState(0);
   const [outputLevel, setOutputLevel] = useState(0);
   const [error, setError] = useState(null);
+  // The picked voice, which only applies to English — the Flux TTS catalogue is
+  // English-only, so every other language uses the Aura-2 voice from the table.
+  // Seeded from that table so the picker opens on the real current voice.
+  const [voice, setVoiceState] = useState(
+    () => getVoiceConfig(VOICE_PICKER_LANGUAGE).tts.model
+  );
 
   // Keep the latest prop callbacks + language in refs so the orchestrator's
   // stable trampolines always reach the current implementations.
@@ -39,6 +45,13 @@ export function useConversation({
   interruptedRef.current = onResponseInterrupted;
   const languageRef = useRef(language);
   languageRef.current = language;
+  const voiceRef = useRef(voice);
+  voiceRef.current = voice;
+
+  // The voice override is meaningful for English only; for other languages the
+  // language itself decides the voice, so pass nothing and let the table win.
+  const voiceFor = (lang) =>
+    lang === VOICE_PICKER_LANGUAGE ? voiceRef.current : null;
 
   // Create exactly one orchestrator. State setters are stable, so the callbacks
   // below never go stale — no need to recreate the instance on re-render.
@@ -90,16 +103,15 @@ export function useConversation({
   const start = useCallback(() => {
     setError(null);
     setTranscript(EMPTY_TRANSCRIPT);
-    convoRef.current?.start(languageRef.current);
+    convoRef.current?.start(languageRef.current, voiceFor(languageRef.current));
   }, []);
 
   const stop = useCallback(() => convoRef.current?.stop(), []);
 
-  // Switch language mid-session: tear down and reconnect on the new models.
-  // No-op reconnect if a session isn't running — the next start() picks up the
-  // new language from languageRef.
-  const restartWith = useCallback(async (nextLanguage) => {
-    languageRef.current = nextLanguage;
+  // Reconnect on new models. Used for both knobs that can't change on a live
+  // socket — the language (STT model + voice) and the TTS voice itself. No-op
+  // reconnect if a session isn't running; the next start() picks the refs up.
+  const restart = useCallback(async (nextLanguage, nextVoice) => {
     const convo = convoRef.current;
     if (!convo) return;
     const wasRunning = convo.state !== "idle" && convo.state !== "error";
@@ -107,9 +119,32 @@ export function useConversation({
       await convo.stop();
       setTranscript(EMPTY_TRANSCRIPT);
       setError(null);
-      convo.start(nextLanguage);
+      convo.start(nextLanguage, nextVoice);
     }
   }, []);
+
+  // Switch language mid-session.
+  const restartWith = useCallback(
+    (nextLanguage) => {
+      languageRef.current = nextLanguage;
+      return restart(nextLanguage, voiceFor(nextLanguage));
+    },
+    [restart]
+  );
+
+  // Switch the TTS voice mid-session. Flux TTS can only change `speed`
+  // mid-stream via Configure, not the voice, so this needs a fresh socket.
+  // That also drops Flux's cross-turn context — an unavoidable cost here, since
+  // the new voice is a different voice anyway. It's the reason we don't
+  // reconnect for any *other* reason; see tts.js.
+  const changeVoice = useCallback(
+    (nextVoice) => {
+      voiceRef.current = nextVoice;
+      setVoiceState(nextVoice);
+      return restart(languageRef.current, voiceFor(languageRef.current));
+    },
+    [restart]
+  );
 
   // Click-driven barge-in: stop the current response without ending the session.
   const interruptResponse = useCallback(
@@ -123,9 +158,11 @@ export function useConversation({
     level,
     outputLevel,
     error,
+    voice,
     start,
     stop,
     restartWith,
+    changeVoice,
     interruptResponse,
   };
 }

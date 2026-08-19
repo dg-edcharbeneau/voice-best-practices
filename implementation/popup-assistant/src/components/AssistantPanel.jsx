@@ -1,12 +1,13 @@
 import { VoiceOrb } from "./VoiceOrb.jsx";
 import { StatusLine } from "./StatusLine.jsx";
 import { LanguageSelect } from "./LanguageSelect.jsx";
+import { VoiceSelect } from "./VoiceSelect.jsx";
 import { ChatView } from "./ChatView.jsx";
 import { Composer } from "./Composer.jsx";
 import { ChatIcon, MicIcon, MicOffIcon, MinimizeIcon } from "./icons.jsx";
 
 // The expanded panel (mocks #1 and #3). Voice-first: a big status orb in the
-// middle, language picker + view toggle in the header, and the text composer
+// middle, language + voice pickers and view toggle in the header, and the composer
 // pinned at the bottom as the always-available fallback. A header toggle swaps
 // the middle between the VOICE view (orb) and the TEXT view (transcript) — both
 // drive the same conversation.
@@ -20,6 +21,9 @@ export function AssistantPanel({
   transcript,
   language,
   onLanguageChange,
+  voice,
+  onVoiceChange,
+  showVoicePicker,
   view, // "voice" | "text"
   onToggleView,
   onStart,
@@ -66,6 +70,16 @@ export function AssistantPanel({
           onChange={onLanguageChange}
           disabled={reconnecting}
         />
+
+        {/* English only — the Flux TTS catalogue has no other languages, so for
+            es/fr/de the language already determines the Aura-2 voice. */}
+        {showVoicePicker && (
+          <VoiceSelect
+            value={voice}
+            onChange={onVoiceChange}
+            disabled={reconnecting}
+          />
+        )}
 
         <button
           type="button"

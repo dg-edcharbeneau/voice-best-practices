@@ -96,8 +96,12 @@ export function createConversation({ onState, onTranscript, onLevel, onError, re
     activeTurnIndex = Number.NaN;
     generating = false;
     outstandingFlushes = 0;
+    // Read how much the listener actually heard BEFORE flushing — flush() resets
+    // the player's timeline, and Flux TTS wants that offset to record where the
+    // turn was cut. (The v1 Aura path ignores it.)
+    const heardMs = player?.playedMs ?? 0;
     player?.flush();
-    tts?.clear();
+    tts?.interrupt(heardMs);
   }
 
   // Decide whether playback for the current turn is truly finished. Because we
@@ -253,6 +257,9 @@ export function createConversation({ onState, onTranscript, onLevel, onError, re
       // Resume the audio context from within the click that called start().
       await player.resume();
 
+      // One socket for the whole session, not one per turn: Flux TTS keeps its
+      // acoustic state on the connection, so reconnecting between turns would
+      // throw away cross-turn context and restart the voice cold (#12).
       tts = connectTTS({
         token,
         onAudio: (buf) => player.enqueue(buf),

@@ -47,7 +47,8 @@ the edges.
 | Concern | Where it lives |
 |---|---|
 | State machine (idle → connecting → listening → thinking → speaking) | [`src/lib/conversation.js`](src/lib/conversation.js) |
-| Mic / STT / TTS / player / token / config | [`src/lib/`](src/lib/) (unchanged from vanilla) |
+| Mic / STT / TTS / player / token / config | [`src/lib/`](src/lib/) |
+| **Flux TTS voice catalogue** (accent-grouped, feeds the picker) | [`src/lib/voices.js`](src/lib/voices.js) |
 | React seam — callbacks → state, one instance, teardown | [`src/hooks/useConversation.js`](src/hooks/useConversation.js) |
 | **Voice ⇄ CopilotChat bridge** — `respond` + barge-in `stopGeneration` | [`src/hooks/useCopilotVoiceBridge.js`](src/hooks/useCopilotVoiceBridge.js) |
 | **CopilotKit runtime** (holds the LLM key, relays to OpenAI) | [`server/server.mjs`](server/server.mjs) |
@@ -84,6 +85,29 @@ props can't reach it, so the voice controls are handed down through a small
 [context](src/hooks/voiceControls.jsx). The input is a *stable* module-scope
 component (not recreated per render) so CopilotChat never remounts it — otherwise
 you'd lose focus and half-typed text.
+
+## Choosing a voice
+
+The header has a voice picker, grouped by accent. It lists Deepgram's **Flux TTS**
+catalogue from [`src/lib/voices.js`](src/lib/voices.js) — a static copy of
+[Deepgram's docs](https://developers.deepgram.com/docs/flux-tts/voices), since
+Flux TTS has no "list voices" endpoint. The default is set by `TTS.model` in
+[`src/lib/config.js`](src/lib/config.js).
+
+Two things worth knowing:
+
+- **Changing voice restarts the session.** Flux TTS can change `speed` mid-stream
+  with a `Configure` message, but not the voice — that needs a new socket. The
+  picker is disabled while a session is live, and switching reconnects.
+- **The voice name picks the endpoint.** [`src/lib/tts.js`](src/lib/tts.js) routes
+  `flux-*` voices to `/v2/speak` and `aura*` voices to `/v1/speak`. Flux TTS is
+  English-only, so if you need another language set an Aura-2 voice
+  (`aura-2-celeste-es`, `aura-2-julius-de`, …) in `config.js` and the older
+  protocol is used automatically — the picker lists it under "Configured".
+
+`config.js` also carries Flux-only delivery knobs that have no UI: `speed`
+(0.85–1.15) and `expressivity` (-2 calmer … 2 more animated). Both are sent only
+when set to a non-default value, because `/v2/speak` rejects unknown params.
 
 ## Quick start
 

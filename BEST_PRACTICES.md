@@ -6,8 +6,8 @@ repo that implements it. It's framework-independent — the ideas apply whether
 you build with vanilla JS (as here), React, Vue, Svelte, or native.
 
 The reference stack is **Deepgram Flux** for streaming speech-to-text and
-**Deepgram Speak** for streaming text-to-speech, connected **directly** (not via
-the Voice Agent platform). There is deliberately **no LLM** — the demo echoes
+**Deepgram Flux TTS** for streaming text-to-speech, connected **directly** (not
+via the Voice Agent platform). There is deliberately **no LLM** — the demo echoes
 your finished turn back to you so the full loop is exercised. The single point
 where an LLM would slot in is marked in [`conversation.js`](public/src/conversation.js)
 (`echoResponder` / the `respond` option).
@@ -89,13 +89,35 @@ The signature of a *good* voice UI: the user can interrupt the agent by
 talking, and the agent stops **immediately**. When `StartOfTurn` arrives while
 audio is playing, `interrupt()` in [`conversation.js`](public/src/conversation.js):
 
-1. `player.flush()` — stops every scheduled audio source locally (instant), and
-2. `tts.clear()` — tells Deepgram to drop audio it has buffered but not yet sent.
+1. reads `player.playedMs` — how much of the turn actually reached the speakers,
+2. `player.flush()` — stops every scheduled audio source locally (instant), and
+3. `tts.interrupt(playedMs)` — tells Deepgram to drop audio it has buffered but
+   not yet sent.
 
-Both halves matter: (1) kills what's already in your speakers; (2) stops more
+All three matter. (1) and (2) must happen in that order, because `flush()` resets
+the player's timeline. (2) kills what's already in your speakers; (3) stops more
 audio arriving over the wire. We also guard against a *late* response: if the
 user barges in while we're still "thinking", `commitTurn()` checks the
 `turn_index` and abandons the stale reply.
+
+**Why report how much was heard.** On Flux TTS (`/v2/speak`) the interrupt
+message carries an optional `playback_offset`, and Deepgram answers with
+`SpeechInterrupted` — `text_spoken` and `text_remaining`, an exact account of
+what the listener did and didn't hear. That is the hard half of agent state
+reconciliation, and it keeps your LLM's conversation history honest: without it
+you have to reconstruct the cut-off point from playback timing, or record the
+whole reply as spoken when the user only heard the first sentence.
+
+Send the offset from the *client*, not the server's own count. The server knows
+what it sent; the browser knows what it played, and those differ by whatever is
+still scheduled in the Web Audio graph. `playedMs` is capped at the scheduled
+duration precisely because the audio clock runs ahead of the queue between
+chunks. (Omitting `playback_offset` is legal — Deepgram then reports
+`audio_played_ms` from its own totals, which overcounts.)
+
+On the older Aura endpoint (`/v1/speak`) the equivalent is a bare `Clear` with no
+offset, so `tts.interrupt()` sends that instead and ignores the argument — one
+call site, either generation.
 
 ## 5. Show VAD feedback
 
@@ -136,6 +158,8 @@ Remember: an `AudioContext` starts suspended until a user gesture. We call
 - Send audio only while the socket is `OPEN`; guard every `send`.
 - **Reconnect caveat:** each new STT connection restarts timestamps at zero. If
   you keep a running transcript timeline across reconnects, add an offset.
+- **Don't** cycle the TTS socket between turns — that's what keeps cross-turn
+  context alive (#12).
 
 ## 9. Accessibility
 
@@ -164,6 +188,37 @@ seam in [`conversation.js`](public/src/conversation.js). To make this a real
 assistant, replace it with a call to your LLM (it may return a `Promise<string>`,
 or you can stream tokens straight into `tts.speak()` as they arrive). Everything
 else — capture, turn-taking, barge-in, playback, teardown — stays the same.
+
+## 12. Keep one TTS socket for the whole session
+
+Flux TTS (`/v2/speak`) carries its **acoustic state** — prosody, tone, pacing —
+across turns, so turn 10 sounds like a continuation of turn 1 instead of a cold
+start. This is *cross-turn context*, and it's worth knowing two things about it:
+
+- **There is no flag.** It's simply how `/v2/speak` behaves. Nothing to enable.
+- **A new connection resets it.** The state lives on the socket. `Flush` (end of
+  turn) and `Interrupt` (barge-in) both preserve it; only `Close` or a reconnect
+  drops it.
+
+So socket lifetime is a *correctness* concern, not just an efficiency one.
+Opening a TTS socket per turn — a tempting simplification — costs you a
+handshake on every reply and silently makes the voice restart cold each time.
+Open it once in `start()` and close it only in `stop()`, as
+[`conversation.js`](public/src/conversation.js) does.
+
+Note that the context is the model's own prior *generations* — not the user's
+audio, not their words, not your LLM's reasoning. It makes the voice coherent;
+it doesn't make the model aware of the conversation. Conversational memory is
+still your responder's job (#11).
+
+**One-hour cap:** Deepgram ends a session after an hour. A session that can run
+that long needs to reconnect — and the voice will reset at that seam. The
+examples here don't reconnect; they surface the close as an error (#10), which
+is the honest behavior for a demo but not enough for production.
+
+See [Cross-Turn Context](https://developers.deepgram.com/docs/flux-tts/context).
+
+Aura (`/v1/speak`) has no equivalent — each turn is synthesized independently.
 
 ---
 

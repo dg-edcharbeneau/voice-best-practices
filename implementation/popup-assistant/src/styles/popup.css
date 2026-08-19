@@ -474,3 +474,75 @@
     transition: none !important;
   }
 }
+
+/* --- voice picker ---------------------------------------------------------- */
+/* Sits beside the language picker in the panel header, and only for English —
+   the Flux TTS catalogue is English-only (see VoiceSelect.jsx). Shares the
+   language picker's chevron and disabled treatment. */
+.va-voice { position: relative; }
+.va-voice-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 120px;
+  padding: 8px 12px;
+  border: 1px solid var(--va-border);
+  border-radius: 999px;
+  background: var(--va-surface);
+  color: var(--va-fg);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.va-voice-trigger:disabled { opacity: 0.5; cursor: default; }
+.va-voice-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.va-voice-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  width: 240px;
+  /* The catalogue is long, so the menu scrolls rather than running off-panel. */
+  max-height: 280px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  background: var(--va-surface);
+  border: 1px solid var(--va-border);
+  border-radius: var(--va-radius-sm);
+  box-shadow: var(--va-shadow);
+  z-index: 5;
+}
+.va-voice-menu ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.va-voice-group {
+  margin: 6px 0 2px;
+  padding: 0 10px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--va-muted);
+}
+.va-voice-option {
+  display: block;
+  width: 100%;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: calc(var(--va-radius-sm) - 2px);
+  background: none;
+  color: var(--va-fg);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.va-voice-option:hover,
+.va-voice-option:focus-visible { background: var(--va-surface-2); }
+.va-voice-option.is-selected { color: hsl(var(--va-accent)); font-weight: 600; }

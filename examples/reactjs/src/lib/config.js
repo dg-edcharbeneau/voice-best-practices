@@ -13,12 +13,20 @@ export const STT = {
   sampleRate: 16000, // Flux recommends 16 kHz for raw linear16.
 };
 
-// --- Text-to-speech: Deepgram Speak (/v1/speak) ------------------------------
+// --- Text-to-speech: Deepgram Flux TTS (/v2/speak) ---------------------------
 // Streamed so playback can start on the first audio frame.
+//
+// Flux TTS is the current generation: streaming-first, with native interruption
+// handling that pairs naturally with Flux STT's turn detection. tts.js picks the
+// endpoint from this name — `flux-*` voices go to /v2/speak, `aura*` voices fall
+// back to /v1/speak (still the only option outside English).
 export const TTS = {
-  model: "aura-2-thalia-en",
+  model: "flux-haley-en",
   encoding: "linear16",
-  sampleRate: 24000, // aura-2 streams 24 kHz linear16 cleanly.
+  sampleRate: 24000, // valid on both endpoints (8k / 16k / 24k / 48k).
+  // Flux TTS only; the v1 Aura endpoint ignores these.
+  speed: 1, // 0.85 (slower) .. 1.15 (faster)
+  expressivity: 0, // -2 (calmer) .. 2 (more animated)
 };
 
 // --- Microphone capture ------------------------------------------------------

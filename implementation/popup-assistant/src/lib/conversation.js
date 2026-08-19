@@ -14,9 +14,11 @@
 // stream synthesized from Nova-3 (see stt.js). Either way this file only ever
 // sees TurnInfo — it does not know or care which STT backend is live.
 //
-// The only per-language knob here is which STT model + Aura-2 voice to connect,
-// resolved from getVoiceConfig(language) at start() time. Switching language
-// means stop() then start(newLanguage) — you can't swap models on a live socket.
+// The only per-language knob here is which STT model + TTS voice to connect,
+// resolved from getVoiceConfig(language, voice) at start() time. `voice` is the
+// picker's override (English only — the Flux TTS catalogue is English-only, so
+// other languages take the Aura-2 voice from the table). Switching either one
+// means stop() then start(...) — you can't swap models on a live socket.
 
 import { getToken } from "./token.js";
 import { startMic } from "./mic.js";
@@ -68,9 +70,11 @@ export function createConversation({
   onResponseInterrupted,
   respond = echoResponder,
   language = DEFAULT_LANGUAGE,
+  voice = null,
 }) {
   let state = "idle";
   let currentLanguage = language;
+  let currentVoice = voice;
   let mic = null;
   let stt = null;
   let tts = null;
@@ -106,8 +110,12 @@ export function createConversation({
     activeTurnIndex = Number.NaN;
     generating = false;
     outstandingFlushes = 0;
+    // Read how much the listener actually heard BEFORE flushing — flush() resets
+    // the player's timeline, and Flux TTS wants that offset to record where the
+    // turn was cut. (The v1 Aura path ignores it.)
+    const heardMs = player?.playedMs ?? 0;
     player?.flush();
-    tts?.clear();
+    tts?.interrupt(heardMs);
     onResponseInterrupted?.();
   }
 
@@ -230,10 +238,11 @@ export function createConversation({
   }
 
   // --- lifecycle --------------------------------------------------------------
-  async function start(nextLanguage = currentLanguage) {
+  async function start(nextLanguage = currentLanguage, nextVoice = currentVoice) {
     if (state !== "idle" && state !== "error") return;
     currentLanguage = nextLanguage;
-    const cfg = getVoiceConfig(currentLanguage);
+    currentVoice = nextVoice;
+    const cfg = getVoiceConfig(currentLanguage, currentVoice);
     setState("connecting");
     try {
       const token = await getToken();
@@ -249,6 +258,9 @@ export function createConversation({
       // Resume the audio context from within the click that called start().
       await player.resume();
 
+      // One socket for the whole session, not one per turn: Flux TTS keeps its
+      // acoustic state on the connection, so reconnecting between turns would
+      // throw away cross-turn context and restart the voice cold (#12).
       tts = connectTTS({
         token,
         tts: cfg.tts,
@@ -306,6 +318,9 @@ export function createConversation({
     interruptResponse,
     get state() {
       return state;
+    },
+    get voice() {
+      return currentVoice;
     },
     get language() {
       return currentLanguage;

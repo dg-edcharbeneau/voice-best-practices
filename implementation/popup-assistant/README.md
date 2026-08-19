@@ -57,21 +57,34 @@ auto-detected, multilingual users often prefer a different one (e.g. an
 Eastern-European speaker who’d rather use English). Changing the language
 restarts the session on the right models.
 
-Deepgram’s speech-to-text has an honest split here, and the code handles both
-behind one event vocabulary (see [`src/lib/stt.js`](src/lib/stt.js)):
+Deepgram’s speech-to-text has an honest split here, and so does its
+text-to-speech. The code handles both behind one vocabulary (see
+[`src/lib/stt.js`](src/lib/stt.js) and [`src/lib/tts.js`](src/lib/tts.js)):
 
-| Language          | STT                                        | TTS voice (Aura-2)   |
-| ----------------- | ------------------------------------------ | -------------------- |
-| English (`en`)    | **Flux** `/v2/listen` — built-in turn-taking | `aura-2-thalia-en`   |
-| Spanish (`es`)    | **Nova-3** `/v1/listen` + turn adapter     | `aura-2-celeste-es`  |
-| French (`fr`)     | **Nova-3** `/v1/listen` + turn adapter     | `aura-2-agathe-fr`   |
-| German (`de`)     | **Nova-3** `/v1/listen` + turn adapter     | `aura-2-julius-de`   |
+| Language          | STT                                          | TTS                            |
+| ----------------- | -------------------------------------------- | ------------------------------ |
+| English (`en`)    | **Flux** `/v2/listen` — built-in turn-taking | **Flux TTS** `/v2/speak` — any voice from the picker (default `flux-haley-en`) |
+| Spanish (`es`)    | **Nova-3** `/v1/listen` + turn adapter       | **Aura-2** `/v1/speak` — `aura-2-celeste-es` |
+| French (`fr`)     | **Nova-3** `/v1/listen` + turn adapter       | **Aura-2** `/v1/speak` — `aura-2-agathe-fr`  |
+| German (`de`)     | **Nova-3** `/v1/listen` + turn adapter       | **Aura-2** `/v1/speak` — `aura-2-julius-de`  |
 
-Flux gives English turn detection (`StartOfTurn`/`EndOfTurn`) for free. For the
-other languages, a small adapter turns Nova-3’s interim results + VAD/utterance
-events into the *same* turn events, so the orchestrator never learns which
-backend is live. Voice IDs and language codes come from Deepgram’s docs; the
-authoritative list for your account is `GET https://api.deepgram.com/v1/models`.
+On the STT side, Flux gives English turn detection (`StartOfTurn`/`EndOfTurn`)
+for free. For the other languages, a small adapter turns Nova-3’s interim
+results + VAD/utterance events into the *same* turn events, so the orchestrator
+never learns which backend is live.
+
+On the TTS side the split is simpler: **Flux TTS is English-only**, so English
+gets it and everything else stays on Aura-2. `tts.js` picks the endpoint from the
+voice name — `flux-*` goes to `/v2/speak`, `aura*` to `/v1/speak` — so the table
+above only has to name a voice and the right protocol follows. That also means
+the **voice picker only appears for English**: for the other languages the
+language itself decides the voice.
+
+The Flux voices offered in the picker are listed in
+[`src/lib/voices.js`](src/lib/voices.js), grouped by accent — a static copy of
+[Deepgram’s catalogue](https://developers.deepgram.com/docs/flux-tts/voices),
+since Flux TTS has no “list voices” endpoint. The authoritative Aura list for
+your account is `GET https://api.deepgram.com/v1/models`.
 
 ## How it’s wired
 
@@ -81,6 +94,7 @@ VoiceAssistant                 corner anchoring, open/minimized surfaces
  ├─ MinimizedStatus            floating "Listening…" pill (session stays live)
  └─ AssistantPanel             expanded UI
      ├─ LanguageSelect         manual language picker
+     ├─ VoiceSelect            Flux TTS voice picker (English only)
      ├─ VoiceOrb               tap-to-start / barge-in + live level display
      ├─ StatusLine             the one visible state (aria-live)
      ├─ ChatView               text transcript (voice + typed turns)
@@ -89,6 +103,7 @@ VoiceAssistant                 corner anchoring, open/minimized surfaces
 useConversation  → lib/conversation.js  (state machine, turn-taking, barge-in)
 useChat          → /api/chat            (canned streaming reply → spoken via TTS)
 lib/{stt,tts,mic,player,token,config,preflight}.js   the shared voice engine
+lib/voices.js       the Flux TTS voice catalogue, grouped by accent
 server/server.mjs   mint Deepgram tokens + stub /api/chat + serve the build
 ```
 

@@ -16,6 +16,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createConversation } from "../lib/conversation.js";
+import { TTS, setVoice } from "../lib/config.js";
 import { friendlyError, preflight } from "../lib/preflight.js";
 
 const EMPTY_TRANSCRIPT = { committed: [], interim: "" };
@@ -26,6 +27,8 @@ export function useConversation({ respond, onResponseInterrupted } = {}) {
   const [level, setLevel] = useState(0);
   const [outputLevel, setOutputLevel] = useState(0);
   const [error, setError] = useState(null);
+  // The picker owns the voice; config.js provides the initial value.
+  const [voice, setVoiceState] = useState(TTS.model);
 
   // Keep the latest prop callbacks in refs so the orchestrator's stable
   // trampolines always reach the current implementations.
@@ -93,11 +96,37 @@ export function useConversation({ respond, onResponseInterrupted } = {}) {
 
   const stop = useCallback(() => convoRef.current?.stop(), []);
 
+  // Switch the TTS voice. Flux TTS can only change `speed` mid-stream, not the
+  // voice, so a live session is torn down and reconnected on the new socket —
+  // otherwise the next start() just picks it up.
+  const changeVoice = useCallback(async (nextVoice) => {
+    setVoice(nextVoice);
+    setVoiceState(nextVoice);
+    const convo = convoRef.current;
+    if (!convo) return;
+    if (convo.state !== "idle" && convo.state !== "error") {
+      await convo.stop();
+      setError(null);
+      convo.start();
+    }
+  }, []);
+
   // Click-driven barge-in: stop the current response without ending the session.
   const interruptResponse = useCallback(
     () => convoRef.current?.interruptResponse(),
     []
   );
 
-  return { state, transcript, level, outputLevel, error, start, stop, interruptResponse };
+  return {
+    state,
+    transcript,
+    level,
+    outputLevel,
+    error,
+    voice,
+    start,
+    stop,
+    changeVoice,
+    interruptResponse,
+  };
 }

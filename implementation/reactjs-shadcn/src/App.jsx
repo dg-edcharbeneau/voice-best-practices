@@ -59,7 +59,7 @@ export default function App() {
           A modern chat built with <strong>shadcn/ui</strong>: your microphone
           streams to Deepgram Flux (STT), finished turns go to an LLM via{" "}
           <code className="rounded bg-muted px-1 py-0.5 text-xs">/api/chat</code>
-          , and the reply streams back through Deepgram Speak (TTS) — with
+          , and the reply streams back through Deepgram Flux TTS — with
           turn-taking and barge-in. Talk or type; it's the same chat.
         </p>
       </header>

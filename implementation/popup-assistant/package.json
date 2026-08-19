@@ -1,7 +1,7 @@
 {
   "name": "voice-ui-popup-assistant",
   "version": "1.0.0",
-  "description": "A popup-style voice assistant prototype: corner-pinned launcher that expands into a voice-first chat (with a text fallback and language selector), powered entirely by Deepgram streaming STT (Flux + Nova-3) and TTS (Aura-2). No LLM key required — the brain is a canned stub.",
+  "description": "A popup-style voice assistant prototype: corner-pinned launcher that expands into a voice-first chat (with a text fallback and language selector), powered entirely by Deepgram streaming STT (Flux + Nova-3) and TTS (Flux TTS + Aura-2). No LLM key required — the brain is a canned stub.",
   "private": true,
   "type": "module",
   "engines": {
@@ -25,6 +25,7 @@
     "text-to-speech",
     "flux",
     "nova-3",
+    "flux-tts",
     "aura-2",
     "multilingual",
     "realtime",

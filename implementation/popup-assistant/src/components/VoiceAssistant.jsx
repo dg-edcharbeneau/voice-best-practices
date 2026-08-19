@@ -5,7 +5,7 @@ import { useConversation } from "../hooks/useConversation.js";
 import { LauncherPill } from "./LauncherPill.jsx";
 import { MinimizedStatus } from "./MinimizedStatus.jsx";
 import { AssistantPanel } from "./AssistantPanel.jsx";
-import { DEFAULT_LANGUAGE } from "../lib/config.js";
+import { DEFAULT_LANGUAGE, VOICE_PICKER_LANGUAGE } from "../lib/config.js";
 
 const ANCHORS = new Set(["bottom-left", "bottom-right", "top-left", "top-right"]);
 
@@ -43,9 +43,11 @@ export function VoiceAssistant({
     level,
     outputLevel,
     error,
+    voice,
     start,
     stop,
     restartWith,
+    changeVoice,
     interruptResponse,
   } = useConversation({ respond, onResponseInterrupted, language });
 
@@ -59,7 +61,7 @@ export function VoiceAssistant({
 
   const onLanguageChange = (code) => {
     setLanguage(code);
-    // Reconnect on the new STT model + Aura-2 voice if a session is live.
+    // Reconnect on the new STT model + voice if a session is live.
     restartWith(code);
   };
 
@@ -83,6 +85,10 @@ export function VoiceAssistant({
           transcript={transcript}
           language={language}
           onLanguageChange={onLanguageChange}
+          voice={voice}
+          onVoiceChange={changeVoice}
+          // Flux TTS is English-only, so there is nothing to pick otherwise.
+          showVoicePicker={language === VOICE_PICKER_LANGUAGE}
           view={view}
           onToggleView={() => setView((v) => (v === "voice" ? "text" : "voice"))}
           onStart={start}

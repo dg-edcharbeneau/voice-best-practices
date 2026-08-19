@@ -13,6 +13,7 @@ import { ScrollArea } from "@/components/ui/scroll-area.jsx";
 import { ChatMessage } from "./ChatMessage.jsx";
 import { StatusIndicator } from "./StatusIndicator.jsx";
 import { VoiceInput } from "./VoiceInput.jsx";
+import { VoiceSelect } from "./VoiceSelect.jsx";
 
 // The chat surface: a shadcn Card with a header (title + live status + reset), a
 // scrolling message list, and the composer pinned at the bottom. The whole thing
@@ -23,7 +24,7 @@ export function ChatPanel({
   isGenerating,
   interim,
   reset,
-  voice, // { state, level, outputLevel, start, stop, interruptResponse, stopGenerating, sendTyped }
+  voice, // { state, level, outputLevel, voice, start, stop, changeVoice, interruptResponse, stopGenerating, sendTyped }
 }) {
   const viewportRef = useRef(null);
 
@@ -44,6 +45,11 @@ export function ChatPanel({
       <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0 p-4">
         <CardTitle className="text-base">Voice Assistant</CardTitle>
         <div className="flex items-center gap-2">
+          <VoiceSelect
+            voice={voice.voice}
+            onVoiceChange={voice.changeVoice}
+            disabled={voice.state !== "idle" && voice.state !== "error"}
+          />
           <StatusIndicator state={voice.state} />
           <Button
             type="button"

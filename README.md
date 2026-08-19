@@ -1,7 +1,7 @@
 # Voice UI Best Practices
 
 Reference implementations of a **realtime voice UI** — microphone → Deepgram
-streaming STT (Flux) → turn detection → Deepgram TTS (Speak), with start/stop
+streaming STT (Flux) → turn detection → Deepgram Flux TTS, with start/stop
 and barge-in — built the same way across different stacks.
 
 The behaviors are the point, and they're the same everywhere. The companion

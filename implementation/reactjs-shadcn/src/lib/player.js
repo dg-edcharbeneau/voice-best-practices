@@ -23,6 +23,9 @@ export function createPlayer({ sampleRate, onStart, onEnd, onLevel }) {
 
   const sources = new Set();
   let nextTime = 0;
+  // Timeline position where the current run of audio began, so we can report
+  // how much of it the listener actually heard when they barge in.
+  let startedAt = 0;
   let playing = false;
   let rafId = null;
 
@@ -63,12 +66,14 @@ export function createPlayer({ sampleRate, onStart, onEnd, onLevel }) {
     // Small lead so the very first chunk doesn't start in the past.
     const now = ctx.currentTime;
     if (nextTime < now) nextTime = now + 0.02;
-    src.start(nextTime);
+    const startTime = nextTime;
+    src.start(startTime);
     nextTime += buffer.duration;
 
     sources.add(src);
     if (!playing) {
       playing = true;
+      startedAt = startTime;
       startMeter();
       onStart?.();
     }
@@ -91,6 +96,7 @@ export function createPlayer({ sampleRate, onStart, onEnd, onLevel }) {
     }
     sources.clear();
     nextTime = 0;
+    startedAt = 0;
     if (playing) {
       playing = false;
       stopMeter();
@@ -106,6 +112,22 @@ export function createPlayer({ sampleRate, onStart, onEnd, onLevel }) {
     get isPlaying() {
       return playing;
     },
+
+    /**
+     * Milliseconds of the current run that have actually reached the speakers.
+     * Flux TTS takes this as `playback_offset` on an Interrupt so it knows where
+     * the listener was cut off. Capped at what we've scheduled, since the audio
+     * clock runs ahead of the queue between chunks.
+     *
+     * Must be read BEFORE flush() — that resets the timeline.
+     */
+    get playedMs() {
+      if (!playing) return 0;
+      const elapsed = (ctx.currentTime - startedAt) * 1000;
+      const scheduled = (nextTime - startedAt) * 1000;
+      return Math.min(Math.max(elapsed, 0), Math.max(scheduled, 0));
+    },
+
     close: () => {
       flush();
       ctx.close();

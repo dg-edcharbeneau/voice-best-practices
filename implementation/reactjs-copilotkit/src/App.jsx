@@ -5,6 +5,7 @@ import { useCopilotVoiceBridge } from "./hooks/useCopilotVoiceBridge.js";
 import { VoiceControlsContext } from "./hooks/voiceControls.jsx";
 import { VoiceInput } from "./components/VoiceInput.jsx";
 import { ErrorBanner } from "./components/ErrorBanner.jsx";
+import { VoiceSelect } from "./components/VoiceSelect.jsx";
 
 // This demo wires Deepgram's voice loop to CopilotKit's <CopilotChat>:
 //   speak → Flux STT (turn detection) → CopilotKit runtime → LLM → Deepgram TTS,
@@ -21,8 +22,17 @@ export default function App() {
   const { respond, onResponseInterrupted, cancelPending } =
     useCopilotVoiceBridge();
 
-  const { state, level, outputLevel, error, start, stop, interruptResponse } =
-    useConversation({ respond, onResponseInterrupted });
+  const {
+    state,
+    level,
+    outputLevel,
+    error,
+    voice,
+    start,
+    stop,
+    changeVoice,
+    interruptResponse,
+  } = useConversation({ respond, onResponseInterrupted });
 
   // If the session ends while a reply is still generating, release the bridge's
   // pending promise so nothing is left hanging.
@@ -37,7 +47,7 @@ export default function App() {
         <p className="subtitle">
           A voice-driven <strong>CopilotChat</strong>: your microphone streams to
           Deepgram Flux (STT), finished turns go to the CopilotKit runtime and an
-          LLM, and the reply streams back through Deepgram Speak (TTS) — with
+          LLM, and the reply streams back through Deepgram Flux TTS — with
           turn-taking and barge-in. Talk or type; it's the same chat.
         </p>
       </header>
@@ -45,7 +55,14 @@ export default function App() {
       <ErrorBanner message={error} />
 
       <section className="panel chat-panel" aria-label="Conversation">
-        <h2 className="panel-title">Conversation</h2>
+        <div className="panel-header">
+          <h2 className="panel-title">Conversation</h2>
+          <VoiceSelect
+            voice={voice}
+            onVoiceChange={changeVoice}
+            disabled={state !== "idle" && state !== "error"}
+          />
+        </div>
         {/* Expose the voice controls to the custom input rendered inside
             <CopilotChat> (it's out of reach of normal props). */}
         <VoiceControlsContext.Provider

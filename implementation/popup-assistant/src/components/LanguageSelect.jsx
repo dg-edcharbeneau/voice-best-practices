@@ -6,7 +6,9 @@ import { ChevronDownIcon } from "./icons.jsx";
 // MANUALLY on purpose: even when a spoken language could be auto-detected,
 // multilingual users often prefer a different one (e.g. an Eastern-European
 // speaker who prefers English). Changing it restarts the voice session on the
-// matching STT model + Aura-2 voice (see useConversation.restartWith).
+// matching STT model + TTS voice (see useConversation.restartWith) — and since
+// Flux TTS is English-only, it also decides whether a voice picker is offered
+// at all (see VoiceSelect.jsx).
 //
 // Built as a button + listbox of real buttons so it's keyboard-operable and
 // screen-reader friendly without pulling in a component library.
