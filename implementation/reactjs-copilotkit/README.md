@@ -52,6 +52,7 @@ the edges.
 | React seam — callbacks → state, one instance, teardown | [`src/hooks/useConversation.js`](src/hooks/useConversation.js) |
 | **Voice ⇄ CopilotChat bridge** — `respond` + barge-in `stopGeneration` | [`src/hooks/useCopilotVoiceBridge.js`](src/hooks/useCopilotVoiceBridge.js) |
 | **CopilotKit runtime** (holds the LLM key, relays to OpenAI) | [`server/server.mjs`](server/server.mjs) |
+| **System prompt / persona** (voice-first formatting rules) | [`server/prompt.mjs`](server/prompt.mjs) → the runtime agent's `prompt` |
 | UI — voice HUD + `<CopilotChat>` | [`src/App.jsx`](src/App.jsx), [`src/components/`](src/components/) |
 | **Custom chat input** — textarea + Listen / Barge-in / Send buttons in one box | [`src/components/VoiceInput.jsx`](src/components/VoiceInput.jsx) (passed to `<CopilotChat Input={…} />`) |
 
@@ -171,8 +172,71 @@ import { CopilotRuntime, AnthropicAdapter, copilotRuntimeNodeHttpEndpoint }
 import Anthropic from "@anthropic-ai/sdk";
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-const serviceAdapter = new AnthropicAdapter({ anthropic, model: "claude-sonnet-4-20250514" });
+const serviceAdapter = new AnthropicAdapter({ anthropic, model: "claude-sonnet-5" });
 ```
+
+## The system prompt
+
+The persona lives in [`server/prompt.mjs`](server/prompt.mjs) — the same module
+as the sibling [`../reactjs-shadcn`](../reactjs-shadcn) demo, byte-for-byte the
+same prompt text. Every reply is read aloud, so markdown, bracketed directions
+like `[pause]`, and bullet lists all get pronounced literally: the formatting
+rules in that file are load-bearing, not stylistic. It's assembled from named
+blocks — keep `FORMATTING`, `CONVERSATION_STYLE` and `SPEAKING_STYLE`, replace
+`IDENTITY`, `SUBSTANCE` and `BOUNDARIES` with your own product.
+
+**Where it enters the request is the part worth reading.** The obvious route —
+`<CopilotChat instructions={…}>` — does **not** work on `@copilotkit/*` 1.63:
+react-ui stores the text (`setChatInstructions`) and nothing in the installed
+packages ever reads it back out. It fails silently, which in a voice app means
+the TTS quietly starts reading "star star" out loud. Probing
+`POST /api/copilotkit` directly with an `OpenAIAdapter`:
+
+| Where you put the prompt | Reaches the model? |
+|---|---|
+| `<CopilotChat instructions={…}>` | **no** — stored client-side, never sent |
+| a `system`-role message in the run | **no** — `forwardSystemMessages` defaults to `false` |
+| `forwardedProps.instructions` | **no** |
+| a `context` entry (`useCopilotReadable`) | yes — but it's "context", and it ships in the bundle |
+| **`BuiltInAgent`'s `prompt` option** | **yes** — what this demo uses |
+
+So [`server/server.mjs`](server/server.mjs) names the default agent explicitly:
+
+```js
+import { BuiltInAgent } from "@copilotkit/runtime/v2";   // not the root export
+
+const serviceAdapter = new OpenAIAdapter({ openai, model: OPENAI_MODEL });
+const runtime = new CopilotRuntime({
+  agents: {
+    default: new BuiltInAgent({
+      model: serviceAdapter.getLanguageModel(),
+      prompt: SYSTEM_PROMPT,
+    }),
+  },
+});
+```
+
+That's what the runtime does implicitly when `agents` is empty (it builds
+`default` from the adapter's language model) — we just also hand it a prompt.
+Bonus: the persona stays on the server, so it never ships in the browser bundle
+and a client can't edit it. `grep -r "star star Important" dist/` finds nothing.
+
+To re-check this after a `@copilotkit/runtime` bump, ask the running server a
+question the persona has an opinion about — it should answer with disfluencies
+and no markdown, and refuse to look things up:
+
+```sh
+curl -s localhost:3000/api/copilotkit \
+  -H 'Content-Type: application/json' \
+  -d '{"method":"agent/run","params":{"agentId":"default"},
+       "body":{"threadId":"t1","runId":"r1","state":{},"tools":[],"context":[],
+               "forwardedProps":{},
+               "messages":[{"id":"u1","role":"user",
+                            "content":"what is the weather in Detroit?"}]}}'
+```
+
+A persona-shaped answer ("I can't check that from in here, no tools wired up in
+this demo") means the prompt is landing. A tidy markdown list means it isn't.
 
 ## Make the assistant *do* things
 

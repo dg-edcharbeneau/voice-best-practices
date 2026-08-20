@@ -72,13 +72,13 @@ export default function App() {
             <CopilotChat
               // Our custom input: textarea + voice buttons in one box.
               Input={VoiceInput}
-              // Spoken replies are read aloud, so steer the model toward short,
-              // speech-friendly answers (no markdown, lists, or code blocks).
-              instructions={
-                "You are a concise, friendly voice assistant. Your replies are " +
-                "spoken aloud, so keep them to one to three short sentences and " +
-                "avoid markdown, bullet lists, code blocks, and emoji."
-              }
+              // No `instructions` prop on purpose. Replies are spoken aloud, so
+              // the persona (and the formatting rules that keep markdown out of
+              // the TTS) matter a lot — and on @copilotkit/* 1.63 `instructions`
+              // is stored client-side and never sent, so a persona here would
+              // silently do nothing. It lives in server/prompt.mjs instead and
+              // reaches the model as the runtime agent's `prompt`; see the note
+              // in server/server.mjs.
               labels={{
                 title: "Voice Assistant",
                 initial:

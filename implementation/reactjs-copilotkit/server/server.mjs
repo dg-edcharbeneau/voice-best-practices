@@ -38,6 +38,11 @@ import {
   copilotRuntimeNodeHttpEndpoint,
 } from "@copilotkit/runtime";
 import OpenAI from "openai";
+// BuiltInAgent is the runtime's default agent — the thing that actually calls the
+// LLM. It only ships from the /v2 subpath, while CopilotRuntime comes from the
+// root (the root re-exports the v2 runtime, not the agent).
+import { BuiltInAgent } from "@copilotkit/runtime/v2";
+import { SYSTEM_PROMPT } from "./prompt.mjs";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const DIST_DIR = join(__dirname, "..", "dist");
@@ -84,7 +89,36 @@ const deepgram = new DeepgramClient({ apiKey: DEEPGRAM_API_KEY });
 // guarantees OPENAI_API_KEY is set before we get here.
 const openai = new OpenAI({ apiKey: OPENAI_API_KEY, baseURL: OPENAI_BASE_URL });
 const serviceAdapter = new OpenAIAdapter({ openai, model: OPENAI_MODEL });
-const runtime = new CopilotRuntime();
+
+// --- The persona -------------------------------------------------------------
+// The prompt itself lives in ./prompt.mjs; this is where it enters the request.
+//
+// Read this before you put a persona anywhere else: on @copilotkit/* 1.63,
+// <CopilotChat instructions={…}> does NOT reach the model. react-ui stores the
+// text (setChatInstructions) and nothing in the installed packages reads it back
+// out — so a persona set there fails silently, which for a voice app means the
+// TTS quietly starts reading "star star" out loud. Probing this endpoint
+// directly, a `system`-role message in the run is ignored too (BuiltInAgent's
+// `forwardSystemMessages` defaults to false), as is
+// `forwardedProps.instructions`; only a `context` entry (what useCopilotReadable
+// emits) gets through from the client.
+//
+// The supported server-side route is BuiltInAgent's `prompt` option. Naming the
+// default agent ourselves is otherwise exactly what the runtime does implicitly
+// when `agents` is empty — it builds `default` from the adapter's language model
+// — so we reuse `serviceAdapter.getLanguageModel()` and keep every .env-based
+// key/baseURL decision above in one place.
+//
+// Bonus for a voice demo: the persona stays on the server, so it never ships in
+// the browser bundle and a client can't edit it.
+const runtime = new CopilotRuntime({
+  agents: {
+    default: new BuiltInAgent({
+      model: serviceAdapter.getLanguageModel(),
+      prompt: SYSTEM_PROMPT,
+    }),
+  },
+});
 
 // A ready-to-mount Node http handler bound to our endpoint path.
 const copilotHandler = copilotRuntimeNodeHttpEndpoint({
