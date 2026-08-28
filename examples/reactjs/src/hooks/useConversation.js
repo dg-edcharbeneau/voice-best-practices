@@ -9,6 +9,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createConversation } from "../lib/conversation.js";
 import { friendlyError, preflight } from "../lib/preflight.js";
+import { logDiagnostic } from "../lib/diagnostics.js";
+import { DIAGNOSTICS } from "../lib/config.js";
 
 const EMPTY_TRANSCRIPT = { committed: [], interim: "" };
 
@@ -17,6 +19,7 @@ export function useConversation({ respond } = {}) {
   const [transcript, setTranscript] = useState(EMPTY_TRANSCRIPT);
   const [level, setLevel] = useState(0);
   const [error, setError] = useState(null);
+  const [diagnostics, setDiagnostics] = useState([]);
 
   // Create exactly one orchestrator. State setters are stable, so the callbacks
   // below never go stale — no need to recreate the instance on re-render.
@@ -43,6 +46,18 @@ export function useConversation({ respond } = {}) {
         console.error(err);
         setError(friendlyError(err));
       },
+      // Turn-taking / barge-in trace: mirrored to the console and kept in a
+      // bounded buffer for the Diagnostics panel. A long session would otherwise
+      // grow this array without limit, so the oldest rows fall off the front.
+      onDiagnostic: (evt) => {
+        logDiagnostic(evt);
+        setDiagnostics((prev) => {
+          const next = [...prev, evt];
+          return next.length > DIAGNOSTICS.max
+            ? next.slice(next.length - DIAGNOSTICS.max)
+            : next;
+        });
+      },
     });
   }
 
@@ -66,6 +81,8 @@ export function useConversation({ respond } = {}) {
   const start = useCallback(() => {
     setError(null);
     setTranscript(EMPTY_TRANSCRIPT);
+    // The orchestrator restarts its clock at +0.00s, so clear the old rows too.
+    setDiagnostics([]);
     convoRef.current?.start();
   }, []);
 
@@ -77,5 +94,17 @@ export function useConversation({ respond } = {}) {
     []
   );
 
-  return { state, transcript, level, error, start, stop, interruptResponse };
+  const clearDiagnostics = useCallback(() => setDiagnostics([]), []);
+
+  return {
+    state,
+    transcript,
+    level,
+    error,
+    diagnostics,
+    start,
+    stop,
+    interruptResponse,
+    clearDiagnostics,
+  };
 }

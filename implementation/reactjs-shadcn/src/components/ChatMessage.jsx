@@ -1,6 +1,7 @@
-import { Bot, User } from "lucide-react";
+import { Bot, User, Zap } from "lucide-react";
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar.jsx";
+import { splitAtCut, spokenFraction } from "@/lib/interruption.js";
 import { cn } from "@/lib/utils.js";
 
 // A single chat bubble. Assistant messages sit on the left with a bot avatar;
@@ -8,8 +9,22 @@ import { cn } from "@/lib/utils.js";
 // an assistant bubble that has no text yet (the reply is still streaming).
 // `ghost` renders a translucent user bubble for the live interim transcript
 // (Best practice #3/#5 — the user sees their words being heard, in real time).
-export function ChatMessage({ role, content, pending = false, ghost = false, error = false }) {
+// `cut` marks a reply the user barged in on: the text the listener actually
+// heard reads normally, the rest is struck through (Best practice #4).
+export function ChatMessage({
+  role,
+  content,
+  pending = false,
+  ghost = false,
+  error = false,
+  cut = null,
+}) {
   const isUser = role === "user";
+  // Deepgram's unspoken tail located inside this reply. Null when the cut is
+  // known but not where it landed — the /v1 Aura path never reports text, and a
+  // barge-in during "thinking" happens before any text was queued.
+  const parts = cut ? splitAtCut(content, cut.remaining) : null;
+  const heard = spokenFraction(parts);
 
   return (
     <div
@@ -43,12 +58,44 @@ export function ChatMessage({ role, content, pending = false, ghost = false, err
             ? "rounded-tr-sm bg-primary text-primary-foreground"
             : "rounded-tl-sm bg-muted text-foreground",
           ghost && "opacity-60 ring-1 ring-inset ring-border",
-          error && "bg-destructive/10 text-destructive"
+          error && "bg-destructive/10 text-destructive",
+          cut && !error && "ring-1 ring-inset ring-state-error/40"
         )}
       >
-        {pending ? <TypingDots /> : content}
+        {pending ? (
+          <TypingDots />
+        ) : parts ? (
+          <>
+            {parts.spoken}
+            {/* Never reached the listener's ears. Announced for screen readers,
+                since strike-through alone carries no meaning to them. */}
+            <span className="sr-only"> (cut off, not spoken: </span>
+            <span className="line-through decoration-from-font opacity-45">
+              {parts.cut}
+            </span>
+            <span className="sr-only">)</span>
+          </>
+        ) : (
+          content
+        )}
+
+        {cut && <CutFooter heardMs={cut.heardMs} heard={heard} />}
       </div>
     </div>
+  );
+}
+
+// The "you interrupted here" line under a barged-in reply. Shows how long the
+// listener actually heard, and — when Flux TTS told us where the cut landed —
+// how much of the reply that was.
+function CutFooter({ heardMs, heard }) {
+  const seconds = Number.isFinite(heardMs) ? (heardMs / 1000).toFixed(2) : null;
+  return (
+    <span className="mt-1.5 flex items-center gap-1.5 border-t border-current/15 pt-1.5 text-xs opacity-70">
+      <Zap aria-hidden="true" className="size-3 shrink-0" />
+      {seconds ? `cut off at ${seconds}s` : "cut off"}
+      {heard !== null && ` · ${Math.round(heard * 100)}% spoken`}
+    </span>
   );
 }
 

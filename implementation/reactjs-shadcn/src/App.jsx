@@ -3,6 +3,7 @@ import { useEffect } from "react";
 import { useChat } from "./hooks/useChat.js";
 import { useConversation } from "./hooks/useConversation.js";
 import { ChatPanel } from "./components/ChatPanel.jsx";
+import { Diagnostics } from "./components/Diagnostics.jsx";
 import { ErrorBanner } from "./components/ErrorBanner.jsx";
 
 // This demo wires Deepgram's voice loop to a custom shadcn/ui chat:
@@ -23,21 +24,26 @@ export default function App() {
     respond,
     sendTyped,
     onResponseInterrupted,
+    markCut,
     reset,
   } = useChat();
 
   // The voice orchestrator (idle → connecting → listening → thinking → speaking).
-  // It calls respond() on a committed turn and onResponseInterrupted() on barge-in.
+  // It calls respond() on a committed turn and onResponseInterrupted() on barge-in,
+  // and reports through onSpeechCut where playback was cut so the bubble can show
+  // what the listener actually heard.
   const {
     state,
     transcript,
     level,
     outputLevel,
     error,
+    diagnostics,
     start,
     stop,
     interruptResponse,
-  } = useConversation({ respond, onResponseInterrupted });
+    clearDiagnostics,
+  } = useConversation({ respond, onResponseInterrupted, onSpeechCut: markCut });
 
   // If the session ends while a reply is still generating, abort it so nothing
   // keeps streaming into a chat no one is listening to.
@@ -49,13 +55,13 @@ export default function App() {
     <main
       id="app"
       data-state={state}
-      className="mx-auto flex min-h-screen max-w-2xl flex-col gap-6 px-4 py-10 sm:py-14"
+      className="mx-auto flex min-h-screen max-w-6xl flex-col gap-6 px-4 py-10 sm:py-14"
     >
       <header className="space-y-2">
         <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
           Voice + shadcn/ui
         </h1>
-        <p className="text-sm text-muted-foreground sm:text-base">
+        <p className="max-w-3xl text-sm text-muted-foreground sm:text-base">
           A modern chat built with <strong>shadcn/ui</strong>: your microphone
           streams to Deepgram Flux (STT), finished turns go to an LLM via{" "}
           <code className="rounded bg-muted px-1 py-0.5 text-xs">/api/chat</code>
@@ -66,22 +72,26 @@ export default function App() {
 
       <ErrorBanner message={error} />
 
-      <ChatPanel
-        messages={messages}
-        isGenerating={isGenerating}
-        interim={transcript.interim}
-        reset={reset}
-        voice={{
-          state,
-          level,
-          outputLevel,
-          start,
-          stop,
-          interruptResponse,
-          stopGenerating: onResponseInterrupted,
-          sendTyped,
-        }}
-      />
+      <div className="grid min-w-0 items-stretch gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,22rem)] xl:grid-cols-[minmax(0,1fr)_minmax(0,26rem)]">
+        <ChatPanel
+          messages={messages}
+          isGenerating={isGenerating}
+          interim={transcript.interim}
+          reset={reset}
+          voice={{
+            state,
+            level,
+            outputLevel,
+            start,
+            stop,
+            interruptResponse,
+            stopGenerating: onResponseInterrupted,
+            sendTyped,
+          }}
+        />
+
+        <Diagnostics events={diagnostics} onClear={clearDiagnostics} />
+      </div>
 
       <footer className="text-sm text-muted-foreground">
         <p>

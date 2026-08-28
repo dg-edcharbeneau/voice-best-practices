@@ -22,6 +22,7 @@ orchestrator callbacks into state, and rendering.
 | Mic / STT / TTS / player / token / config | [`src/lib/`](src/lib/) (unchanged from vanilla) |
 | React seam — callbacks → state, one instance, teardown on unmount | [`src/hooks/useConversation.js`](src/hooks/useConversation.js) |
 | UI, split into components | [`src/components/`](src/components/) |
+| Turn-taking / barge-in trace (event shape + console mirror) | [`src/lib/diagnostics.js`](src/lib/diagnostics.js) |
 | Audio-thread capture worklet (static asset, loaded by URL) | [`public/pcm-worklet.js`](public/pcm-worklet.js) |
 
 ### Components
@@ -34,10 +35,46 @@ orchestrator callbacks into state, and rendering.
   [`MicMeter.jsx`](src/components/MicMeter.jsx) ·
   [`Controls.jsx`](src/components/Controls.jsx) ·
   [`Transcript.jsx`](src/components/Transcript.jsx) ·
+  [`Diagnostics.jsx`](src/components/Diagnostics.jsx) ·
   [`ErrorBanner.jsx`](src/components/ErrorBanner.jsx)
 
 Button enable/disable is derived purely from the machine state, so the controls
 can't drift out of sync with what's actually possible.
+
+### Diagnostics
+
+Turn-taking and barge-in are the hardest behaviors here and the least visible —
+the status label says "speaking", then it doesn't, and everything interesting
+happened in between. The **Diagnostics** panel (collapsed by default, under the
+transcript) makes the loop legible:
+
+| Channel | What it shows |
+|---|---|
+| `turn` | every Flux `TurnInfo` event except `Update`, plus why a turn has or hasn't settled |
+| `barge-in` | each cut-off: what it interrupted, `playedMs`, the abandoned turn index, and Deepgram's `SpeechInterrupted` reply (`text_spoken` / `text_remaining`) |
+| `tts` | each `Speak` + `Flush` pair and its ack, so streaming granularity is visible |
+| `state` | every state-machine transition |
+
+`EndOfTurn` and `turn settled` are the two halves of turn-taking: the first ends
+the *user's* turn, the second ends the *agent's*. When the UI looks stuck on
+"speaking", the `not settled` rows name the exact latch holding it there
+(responder still generating, flushes outstanding, or player draining).
+
+The orchestrator emits these through one more callback (`onDiagnostic`) next to
+`onState` / `onTranscript` / `onError`, so `src/lib/` stays framework-agnostic —
+[`useConversation.js`](src/hooks/useConversation.js) is what turns them into
+React state. Both sinks are configured in
+[`src/lib/config.js`](src/lib/config.js):
+
+```js
+export const DIAGNOSTICS = {
+  console: true, // mirror every event to console.debug
+  max: 200,      // ring-buffer cap for the in-app panel
+};
+```
+
+Console rows land at `console.debug`, so enable **Verbose** in DevTools to see
+them. Set `console: false` to keep the panel while silencing the console.
 
 ## Quick start
 

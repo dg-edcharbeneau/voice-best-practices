@@ -16,17 +16,19 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createConversation } from "../lib/conversation.js";
-import { TTS, setVoice } from "../lib/config.js";
+import { TTS, setVoice, DIAGNOSTICS } from "../lib/config.js";
+import { logDiagnostic } from "../lib/diagnostics.js";
 import { friendlyError, preflight } from "../lib/preflight.js";
 
 const EMPTY_TRANSCRIPT = { committed: [], interim: "" };
 
-export function useConversation({ respond, onResponseInterrupted } = {}) {
+export function useConversation({ respond, onResponseInterrupted, onSpeechCut } = {}) {
   const [state, setState] = useState("idle");
   const [transcript, setTranscript] = useState(EMPTY_TRANSCRIPT);
   const [level, setLevel] = useState(0);
   const [outputLevel, setOutputLevel] = useState(0);
   const [error, setError] = useState(null);
+  const [diagnostics, setDiagnostics] = useState([]);
   // The picker owns the voice; config.js provides the initial value.
   const [voice, setVoiceState] = useState(TTS.model);
 
@@ -36,6 +38,8 @@ export function useConversation({ respond, onResponseInterrupted } = {}) {
   respondRef.current = respond;
   const interruptedRef = useRef(onResponseInterrupted);
   interruptedRef.current = onResponseInterrupted;
+  const speechCutRef = useRef(onSpeechCut);
+  speechCutRef.current = onSpeechCut;
 
   // Create exactly one orchestrator. State setters are stable, so the callbacks
   // below never go stale — no need to recreate the instance on re-render.
@@ -48,6 +52,7 @@ export function useConversation({ respond, onResponseInterrupted } = {}) {
       respond: (text, onChunk) =>
         respondRef.current ? respondRef.current(text, onChunk) : text,
       onResponseInterrupted: () => interruptedRef.current?.(),
+      onSpeechCut: (info) => speechCutRef.current?.(info),
       onState: (s) => setState(s),
       onLevel: (l) => setLevel(l),
       onOutputLevel: (l) => setOutputLevel(l),
@@ -67,6 +72,18 @@ export function useConversation({ respond, onResponseInterrupted } = {}) {
       onError: (err) => {
         console.error(err);
         setError(friendlyError(err));
+      },
+      // Turn-taking / barge-in trace: mirrored to the console and kept in a
+      // bounded buffer for the Diagnostics panel. A long session would otherwise
+      // grow this array without limit, so the oldest rows fall off the front.
+      onDiagnostic: (evt) => {
+        logDiagnostic(evt);
+        setDiagnostics((prev) => {
+          const next = [...prev, evt];
+          return next.length > DIAGNOSTICS.max
+            ? next.slice(next.length - DIAGNOSTICS.max)
+            : next;
+        });
       },
     });
   }
@@ -91,6 +108,8 @@ export function useConversation({ respond, onResponseInterrupted } = {}) {
   const start = useCallback(() => {
     setError(null);
     setTranscript(EMPTY_TRANSCRIPT);
+    // The orchestrator restarts its clock at +0.00s, so clear the old rows too.
+    setDiagnostics([]);
     convoRef.current?.start();
   }, []);
 
@@ -107,6 +126,9 @@ export function useConversation({ respond, onResponseInterrupted } = {}) {
     if (convo.state !== "idle" && convo.state !== "error") {
       await convo.stop();
       setError(null);
+      // This restart bypasses start() above, so clear the trace here as well —
+      // otherwise old rows sit above a clock that just reset to +0.00s.
+      setDiagnostics([]);
       convo.start();
     }
   }, []);
@@ -117,6 +139,8 @@ export function useConversation({ respond, onResponseInterrupted } = {}) {
     []
   );
 
+  const clearDiagnostics = useCallback(() => setDiagnostics([]), []);
+
   return {
     state,
     transcript,
@@ -124,9 +148,11 @@ export function useConversation({ respond, onResponseInterrupted } = {}) {
     outputLevel,
     error,
     voice,
+    diagnostics,
     start,
     stop,
     changeVoice,
     interruptResponse,
+    clearDiagnostics,
   };
 }

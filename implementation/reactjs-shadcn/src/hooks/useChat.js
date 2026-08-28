@@ -11,6 +11,8 @@
 //                                resolve with the full reply (so it can be spoken)
 //   • onResponseInterrupted()  — the user barged in; abort the in-flight request
 //                                so the LLM stops generating (Best practice #4)
+//   • markCut(info)            — record where playback was cut, so the bubble can
+//                                show what the listener actually heard
 //
 // Typed messages go through sendTyped(): same streaming into the message list,
 // but the reply is NOT spoken (you typed, so you're reading — mirrors the
@@ -141,6 +143,23 @@ export function useChat() {
     abortRef.current?.abort();
   }, []);
 
+  // Barge-in bookkeeping: attach the cut to the newest assistant bubble — the
+  // one whose audio was playing. Called twice per barge-in: once immediately
+  // with just `heardMs`, then again with Deepgram's exact spoken/remaining text
+  // if the TTS generation reports it. Merging means the second call refines the
+  // first instead of replacing it.
+  const markCut = useCallback((info) => {
+    setMessages((prev) => {
+      for (let i = prev.length - 1; i >= 0; i--) {
+        if (prev[i].role !== "assistant") continue;
+        const next = [...prev];
+        next[i] = { ...next[i], cut: { ...next[i].cut, ...info } };
+        return next;
+      }
+      return prev;
+    });
+  }, []);
+
   const reset = useCallback(() => {
     abortRef.current?.abort();
     setMessages([{ ...GREETING, id: nextId() }]);
@@ -152,6 +171,7 @@ export function useChat() {
     respond,
     sendTyped,
     onResponseInterrupted,
+    markCut,
     reset,
   };
 }

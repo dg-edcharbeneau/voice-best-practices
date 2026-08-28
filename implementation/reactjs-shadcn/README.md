@@ -50,6 +50,8 @@ and the LLM call live only at the edges.
 | Mic / STT / TTS / player / token / config | [`src/lib/`](src/lib/) |
 | **Flux TTS voice catalogue** (accent-grouped, feeds the picker) | [`src/lib/voices.js`](src/lib/voices.js) |
 | React seam — callbacks → state, one instance, teardown | [`src/hooks/useConversation.js`](src/hooks/useConversation.js) |
+| **Turn-taking / barge-in trace** (event shape + console mirror) | [`src/lib/diagnostics.js`](src/lib/diagnostics.js) |
+| **Barge-in reconciliation** (locate the cut inside a reply) | [`src/lib/interruption.js`](src/lib/interruption.js) |
 | **Brain + message store** — `respond`, `sendTyped`, barge-in abort | [`src/hooks/useChat.js`](src/hooks/useChat.js) |
 | **Streaming LLM endpoint** (holds the LLM key) | [`server/server.mjs`](server/server.mjs) (`POST /api/chat`) |
 | **System prompt / persona** (voice-first formatting rules) | [`server/prompt.mjs`](server/prompt.mjs) |
@@ -71,6 +73,85 @@ into that bubble — resolving with the full text so the orchestrator can speak 
 socket close and aborts the upstream LLM call too, so you stop paying for tokens
 no one will hear. Typed messages go through `sendTyped()` — same streaming, but
 the reply isn't spoken (you typed, so you're reading).
+
+## Seeing a barge-in
+
+When you talk over the agent, the reply in the chat is the whole thing the LLM
+produced — but you only *heard* part of it. The bubble shows both: the text that
+reached your ears reads normally, the rest is struck through and dimmed, with a
+footer saying where playback stopped.
+
+```
+┌ Assistant ─────────────────────────────┐
+│ The weather today is sunny.            │
+│ H̶i̶g̶h̶s̶ ̶n̶e̶a̶r̶ ̶e̶i̶g̶h̶t̶y̶ ̶d̶e̶g̶r̶e̶e̶s̶.̶                │
+│ ─────────────────────────────────────  │
+│ ⚡ cut off at 1.24s · 52% spoken        │
+└────────────────────────────────────────┘
+```
+
+The split point comes from Flux TTS: `SpeechInterrupted` reports `text_spoken`
+and `text_remaining`, and [`interruption.js`](src/lib/interruption.js) locates the
+remainder inside the message. It anchors on the *unspoken tail* rather than the
+spoken prefix, because we `Speak`+`Flush` one sentence at a time — the tail is
+always a suffix of what we queued, so it's the reliable landmark. When there's no
+confident match the bubble still shows the chip, just without striking any text.
+
+This is reported in two steps, which is why it works on both TTS generations:
+the orchestrator calls `onSpeechCut` immediately with the locally-known
+`playedMs`, then again with Deepgram's exact text if the generation reports it.
+The older `/v1/speak` Aura endpoint never answers an interrupt, so there it stays
+a chip-only mark.
+
+It isn't only cosmetic. An agent whose history claims it said things the user
+never heard will contradict itself on the next turn — "as I mentioned" when it
+didn't. Marking the cut in the conversation of record is what keeps the history
+honest (BEST_PRACTICES.md #4).
+
+## Diagnostics
+
+Turn-taking and barge-in are the hardest behaviors here and the least visible —
+the status badge says "speaking", then it doesn't, and everything interesting
+happened in between. The **Diagnostics** card sits beside the chat (below it on
+narrow screens) and makes the loop legible as it runs:
+
+| Channel | What it shows |
+|---|---|
+| `turn` | every Flux `TurnInfo` event except `Update`, plus why a turn has or hasn't settled |
+| `barge-in` | each cut-off: what it interrupted, `playedMs`, the abandoned turn index, that the LLM request was aborted, and Deepgram's `SpeechInterrupted` reply (`text_spoken` / `text_remaining`) |
+| `tts` | each `Speak` + `Flush` pair and its ack, so streaming granularity is visible |
+| `state` | every state-machine transition |
+
+`EndOfTurn` and `turn settled` are the two halves of turn-taking: the first ends
+the *user's* turn, the second ends the *agent's*. When the UI looks stuck on
+"speaking", the `not settled` rows name the exact latch holding it there (LLM
+still generating, flushes outstanding, or player draining).
+
+The `SpeechInterrupted` row matters most in this example: it is the exact account
+of what the listener did and didn't hear, which is what the chat history *should*
+record as spoken. Recording the whole reply when the user only heard the first
+sentence is how a voice agent's history drifts from reality.
+
+The orchestrator emits these through one more callback (`onDiagnostic`) next to
+`onState` / `onTranscript` / `onError`, so `src/lib/` stays framework-agnostic —
+[`useConversation.js`](src/hooks/useConversation.js) turns them into React state.
+Both sinks are configured in [`src/lib/config.js`](src/lib/config.js):
+
+```js
+export const DIAGNOSTICS = {
+  console: true, // mirror every event to console.debug
+  max: 200,      // ring-buffer cap for the in-app panel
+};
+```
+
+Console rows land at `console.debug`, so enable **Verbose** in DevTools to see
+them. Set `console: false` to keep the panel while silencing the console.
+
+Layout: [`App.jsx`](src/App.jsx) puts the chat and the trace in a two-column grid
+(`lg:grid-cols-[minmax(0,1fr)_minmax(0,22rem)]`) inside a `max-w-6xl` shell. The
+chat card's fixed height sets the row, and the Diagnostics card is `lg:h-full`, so
+the two columns always end level; below `lg` the trace stacks underneath at a
+fixed height of its own.
 
 ## About shadcn/ui in this example
 

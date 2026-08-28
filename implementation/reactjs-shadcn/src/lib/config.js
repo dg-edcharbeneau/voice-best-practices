@@ -54,3 +54,13 @@ export const MIC = {
 
 // Fetch a fresh token this many ms before the current one expires.
 export const TOKEN_REFRESH_MARGIN_MS = 10_000;
+
+// --- Diagnostics -------------------------------------------------------------
+// The turn-taking and barge-in trace surfaced by lib/diagnostics.js: mirrored to
+// the console and collected for the in-app Diagnostics panel. Plain booleans
+// rather than build-time env flags, so this file stays portable across the other
+// examples in this repo.
+export const DIAGNOSTICS = {
+  console: true, // mirror every event to console.debug
+  max: 200, // ring-buffer cap for the in-app panel
+};

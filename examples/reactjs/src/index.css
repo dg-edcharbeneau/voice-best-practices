@@ -175,6 +175,11 @@ body {
   border-color: transparent;
 }
 
+.btn-small {
+  font-size: 0.8rem;
+  padding: 0.35rem 0.7rem;
+}
+
 .btn-primary:hover:not(:disabled) {
   opacity: 0.9;
   background: var(--accent);
@@ -215,6 +220,105 @@ body {
   color: var(--muted);
   font-style: italic;
   min-height: 1.5em;
+}
+
+/* --- diagnostics ---------------------------------------------------------- */
+/* Event log for the turn-taking / barge-in trace. Colors reuse the state
+   vocabulary above, so light and dark mode both come for free. */
+.diag-summary {
+  cursor: pointer;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.diag-count {
+  font-variant-numeric: tabular-nums;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0 0.45rem;
+  letter-spacing: 0;
+}
+
+.diag-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin: 0.75rem 0 0.5rem;
+}
+
+.diag-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  /* Newest event on top, without reversing the DOM: assistive tech still reads
+     the rows oldest-to-newest. */
+  display: flex;
+  flex-direction: column-reverse;
+  max-height: 300px;
+  overflow-y: auto;
+  /* Long transcripts scroll inside the panel instead of widening the page. */
+  overflow-x: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.diag-row {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  gap: 0.5rem;
+  align-items: baseline;
+  padding: 0.3rem 0;
+  border-top: 1px solid var(--border);
+}
+
+/* The visually topmost row is the *last* in the DOM once the axis is flipped. */
+.diag-row:last-child {
+  border-top: none;
+}
+
+.diag-time {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.diag-badge {
+  color: var(--idle);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.diag-badge[data-channel="turn"] {
+  color: var(--listening);
+}
+.diag-badge[data-channel="barge-in"] {
+  color: var(--error);
+}
+.diag-badge[data-channel="tts"] {
+  color: var(--speaking);
+}
+.diag-badge[data-channel="state"] {
+  color: var(--thinking);
+}
+
+.diag-label {
+  overflow-wrap: anywhere;
+}
+
+/* Detail sits under the label, in the third grid column. */
+.diag-detail {
+  grid-column: 3;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.diag-empty {
+  margin: 0.5rem 0 0;
+  color: var(--muted);
+  font-size: 0.88rem;
 }
 
 /* --- error / hint --------------------------------------------------------- */

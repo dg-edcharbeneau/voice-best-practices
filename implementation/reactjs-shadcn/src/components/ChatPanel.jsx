@@ -76,6 +76,7 @@ export function ChatPanel({
                 role={m.role}
                 content={m.content}
                 error={m.error}
+                cut={m.cut}
                 pending={
                   m.role === "assistant" && m.content === "" && isGenerating
                 }
