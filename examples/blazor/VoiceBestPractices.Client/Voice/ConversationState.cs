@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace VoiceBestPractices.Client.Voice;
 
 /// <summary>
@@ -24,6 +26,17 @@ public sealed record TranscriptUpdate(string Interim, bool Committed);
 
 /// <summary>A raw browser error marshalled up from JS, before humanizing.</summary>
 public sealed record JsError(string Name, string Message);
+
+/// <summary>
+/// One row of the turn-taking / barge-in trace emitted by conversation.js (see
+/// diagnostics.js for the shape). <c>At</c> is milliseconds since the session's
+/// first event, so it reads as latency rather than wall-clock time.
+/// </summary>
+public sealed record DiagnosticEvent(int Seq, double At, string Channel, string Label, string? Detail)
+{
+    /// <summary>Relative timestamp, e.g. <c>+4.21s</c>.</summary>
+    public string FormattedAt => $"+{(At / 1000).ToString("0.00", CultureInfo.InvariantCulture)}s";
+}
 
 public static class ConversationStates
 {

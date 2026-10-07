@@ -15,8 +15,16 @@ namespace VoiceBestPractices.Client.Voice;
 /// </summary>
 public sealed class ConversationService : IAsyncDisposable
 {
+    /// <summary>
+    /// Ring-buffer cap for the Diagnostics panel. A long session would otherwise
+    /// grow the trace without limit, so the oldest rows fall off the front.
+    /// (The console mirror is gated separately, in wwwroot/js/config.js.)
+    /// </summary>
+    public const int MaxDiagnostics = 200;
+
     private readonly ConversationInterop _interop;
     private readonly List<string> _committed = [];
+    private readonly List<DiagnosticEvent> _diagnostics = [];
     private bool _initialized;
 
     public ConversationService(IJSRuntime js)
@@ -26,6 +34,7 @@ public sealed class ConversationService : IAsyncDisposable
         _interop.TranscriptUpdated += OnTranscript;
         _interop.LevelChanged += OnLevel;
         _interop.ErrorRaised += OnError;
+        _interop.DiagnosticRaised += OnDiagnostic;
     }
 
     // --- observable state -------------------------------------------------------
@@ -34,6 +43,7 @@ public sealed class ConversationService : IAsyncDisposable
     public string Interim { get; private set; } = "";
     public double Level { get; private set; }
     public string? Error { get; private set; }
+    public IReadOnlyList<DiagnosticEvent> Diagnostics => _diagnostics;
 
     /// <summary>Raised whenever any observable state changes. Components subscribe
     /// and marshal a re-render onto the UI thread.</summary>
@@ -68,6 +78,8 @@ public sealed class ConversationService : IAsyncDisposable
         Error = null;
         _committed.Clear();
         Interim = "";
+        // The orchestrator restarts its clock at +0.00s, so clear the old rows too.
+        _diagnostics.Clear();
         Changed?.Invoke();
         await _interop.StartAsync();
     }
@@ -75,6 +87,12 @@ public sealed class ConversationService : IAsyncDisposable
     public Task StopAsync() => _interop.StopAsync().AsTask();
 
     public Task InterruptResponseAsync() => _interop.InterruptResponseAsync().AsTask();
+
+    public void ClearDiagnostics()
+    {
+        _diagnostics.Clear();
+        Changed?.Invoke();
+    }
 
     // --- orchestrator callbacks: update state, then notify ----------------------
 
@@ -120,12 +138,26 @@ public sealed class ConversationService : IAsyncDisposable
         return Task.CompletedTask;
     }
 
+    // Turn-taking / barge-in trace: kept in a bounded buffer for the Diagnostics
+    // panel. (The console mirror already happened on the JS side.)
+    private Task OnDiagnostic(DiagnosticEvent evt)
+    {
+        _diagnostics.Add(evt);
+        if (_diagnostics.Count > MaxDiagnostics)
+        {
+            _diagnostics.RemoveRange(0, _diagnostics.Count - MaxDiagnostics);
+        }
+        Changed?.Invoke();
+        return Task.CompletedTask;
+    }
+
     public async ValueTask DisposeAsync()
     {
         _interop.StateChanged -= OnStateChanged;
         _interop.TranscriptUpdated -= OnTranscript;
         _interop.LevelChanged -= OnLevel;
         _interop.ErrorRaised -= OnError;
+        _interop.DiagnosticRaised -= OnDiagnostic;
         await _interop.DisposeAsync();
     }
 }

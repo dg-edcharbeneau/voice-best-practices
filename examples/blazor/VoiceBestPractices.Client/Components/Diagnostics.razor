@@ -1,0 +1,60 @@
+@* The turn-taking / barge-in trace, rendered as an event log. Open by default
+   so the loop is visible as it runs; collapse it to get it out of the way.
+   After the first render the <details> open state belongs to the browser:
+   Blazor only patches attributes whose rendered value changed, and `open` never
+   does, so re-renders don't undo a collapse.
+
+   Newest-first without JS: the list is laid out `column-reverse` inside a plain
+   scroll container, so the newest row sits at the top and a viewer at the top
+   stays there as rows arrive. The DOM order stays oldest-to-newest, so assistive
+   tech reads the rows in the order they happened.
+
+   Deliberately *not* aria-live — these rows arrive several per turn and would
+   flood a screen reader. The status row and transcript already carry the
+   announcements a user needs (Best practice #9). *@
+
+<section class="panel" aria-label="Diagnostics">
+    <details class="diagnostics" open>
+        <summary class="panel-title diag-summary">
+            Diagnostics <span class="diag-count">@Events.Count</span>
+        </summary>
+
+        <div class="diag-actions">
+            <button type="button" class="btn btn-small" @onclick="OnClear" disabled="@(Events.Count == 0)">
+                Clear
+            </button>
+        </div>
+
+        @if (Events.Count == 0)
+        {
+            <p class="diag-empty">
+                Start a session and speak — turn events, barge-in cut-offs, and TTS
+                acks show up here.
+            </p>
+        }
+        else
+        {
+            <div class="diag-scroll">
+                <ol class="diag-list">
+                    @foreach (var evt in Events)
+                    {
+                        <li @key="evt.Seq" class="diag-row">
+                            <span class="diag-time">@evt.FormattedAt</span>
+                            <span class="diag-badge" data-channel="@evt.Channel">@evt.Channel</span>
+                            <span class="diag-label">@evt.Label</span>
+                            @if (!string.IsNullOrEmpty(evt.Detail))
+                            {
+                                <span class="diag-detail">@evt.Detail</span>
+                            }
+                        </li>
+                    }
+                </ol>
+            </div>
+        }
+    </details>
+</section>
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<DiagnosticEvent> Events { get; set; } = [];
+    [Parameter] public EventCallback OnClear { get; set; }
+}

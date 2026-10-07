@@ -45,3 +45,11 @@ export const MIC = {
 
 // Fetch a fresh token this many ms before the current one expires.
 export const TOKEN_REFRESH_MARGIN_MS = 10_000;
+
+// --- Diagnostics -------------------------------------------------------------
+// The turn-taking and barge-in trace surfaced by diagnostics.js. This flag gates
+// the console mirror only; the in-app panel's buffer lives on the .NET side (see
+// ConversationService.MaxDiagnostics), since that's the edge that renders it.
+export const DIAGNOSTICS = {
+  console: true, // mirror every event to console.debug
+};

@@ -35,6 +35,7 @@ public sealed class ConversationInterop : IAsyncDisposable
     public event Func<TranscriptUpdate, Task>? TranscriptUpdated;
     public event Func<double, Task>? LevelChanged;
     public event Func<string, Task>? ErrorRaised;
+    public event Func<DiagnosticEvent, Task>? DiagnosticRaised;
 
     /// <summary>
     /// Import the module, hand it a reference back to this object, and run the
@@ -86,6 +87,10 @@ public sealed class ConversationInterop : IAsyncDisposable
     [JSInvokable]
     public Task OnError(JsError error)
         => ErrorRaised?.Invoke(ConversationStates.Humanize(error)) ?? Task.CompletedTask;
+
+    [JSInvokable]
+    public Task OnDiagnostic(DiagnosticEvent evt)
+        => DiagnosticRaised?.Invoke(evt) ?? Task.CompletedTask;
 
     public async ValueTask DisposeAsync()
     {

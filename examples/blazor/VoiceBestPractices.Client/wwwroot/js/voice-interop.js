@@ -13,6 +13,7 @@
 
 import { createConversation } from "./conversation.js";
 import { echoResponder, llmResponder } from "./respond.js";
+import { logDiagnostic } from "./diagnostics.js";
 
 // The "brain". `echoResponder` (the default) speaks your finished turn back so the
 // full realtime loop runs with no LLM configured. Switch to `llmResponder` to route
@@ -26,6 +27,7 @@ const ON_STATE = "OnStateChanged";
 const ON_TRANSCRIPT = "OnTranscript";
 const ON_LEVEL = "OnLevel";
 const ON_ERROR = "OnError";
+const ON_DIAGNOSTIC = "OnDiagnostic";
 
 // The mic level arrives ~90×/second from the audio worklet. Forwarding every
 // one across the interop boundary would re-render the Blazor component tree far
@@ -53,6 +55,14 @@ class ConversationBridge {
       },
       onError: (err) =>
         this.#invoke(ON_ERROR, { name: err?.name ?? "", message: err?.message ?? String(err) }),
+      // Turn-taking / barge-in trace. Mirrored to the console here (the browser
+      // console is a JS concern), then relayed to .NET for the Diagnostics
+      // panel. Unlike the mic level this needs no throttle: it's a handful of
+      // rows per turn, and every one of them matters.
+      onDiagnostic: (evt) => {
+        logDiagnostic(evt);
+        this.#invoke(ON_DIAGNOSTIC, evt);
+      },
     });
   }
 

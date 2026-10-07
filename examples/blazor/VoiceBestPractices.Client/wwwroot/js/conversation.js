@@ -23,6 +23,7 @@ import { startMic } from "./mic.js";
 import { connectSTT } from "./stt.js";
 import { connectTTS } from "./tts.js";
 import { createPlayer } from "./player.js";
+import { createDiagnosticStamp } from "./diagnostics.js";
 import { TTS } from "./config.js";
 import { echoResponder } from "./respond.js";
 
@@ -30,7 +31,14 @@ import { echoResponder } from "./respond.js";
 // (voice-interop.js) can pass llmResponder instead to route turns through the
 // server-side LLM. A responder may return a string to speak, or stream speech
 // itself via the { speak, flush } sink and honour the { signal } for barge-in.
-export function createConversation({ onState, onTranscript, onLevel, onError, respond = echoResponder }) {
+export function createConversation({
+  onState,
+  onTranscript,
+  onLevel,
+  onError,
+  onDiagnostic,
+  respond = echoResponder,
+}) {
   let state = "idle";
   let mic = null;
   let stt = null;
@@ -53,9 +61,24 @@ export function createConversation({ onState, onTranscript, onLevel, onError, re
   // if the player has momentarily run dry.
   let outstandingFlushes = 0;
 
+  // Stamps each diagnostic with a sequence number and a session-relative
+  // timestamp. Recreated per session in start() so the trace restarts at +0.00s.
+  let stamp = createDiagnosticStamp();
+  // Last reason maybeSettle() declined to settle, so it can log a change rather
+  // than repeating itself on every check.
+  let lastSettleBlock = null;
+
+  /** Emit one diagnostic event. A no-op when nobody is listening. */
+  function diag(channel, label, detail) {
+    if (!onDiagnostic) return;
+    onDiagnostic(stamp(channel, label, detail));
+  }
+
   function setState(next) {
     if (state === next) return;
+    const prev = state;
     state = next;
+    diag("state", `${prev} → ${next}`);
     onState?.(state);
   }
 
@@ -64,8 +87,15 @@ export function createConversation({ onState, onTranscript, onLevel, onError, re
   // speaking. Stop playback locally AND tell the server to drop queued audio.
   // Done here in JS at the point of detection so the cut-off is instant
   // (Best practice #4 — barge-in is non-negotiable).
-  function interrupt() {
+  //
+  // `reason` is diagnostics-only: which of the three triggers fired (a new turn,
+  // a resumed turn, or the Stop speaking button). It's worth knowing which one
+  // cut the agent off, because "the user talked over it" and "the user gave up
+  // and clicked" are very different signals.
+  function interrupt(reason) {
     if (state !== "speaking" && state !== "thinking") return;
+    const cutState = state;
+    const cutTurn = activeTurnIndex;
     // Cancel any response still being produced (stops the LLM stream), then kill
     // audio that's already playing. Both halves matter: (1) stop more text/audio
     // arriving, (2) stop what's already in the speakers. Invalidating the turn
@@ -73,7 +103,12 @@ export function createConversation({ onState, onTranscript, onLevel, onError, re
     // still streaming in through the sink — is dropped.
     activeTurnIndex = Number.NaN;
     generating = false;
+    // Flushes for the abandoned turn will still be acked; zeroing the counter is
+    // what makes those late "Flushed" messages harmless (see onControl below).
+    const droppedFlushes = outstandingFlushes;
     outstandingFlushes = 0;
+    lastSettleBlock = null;
+    const aborted = responseAbort !== null;
     responseAbort?.abort();
     // Read how much the listener actually heard BEFORE flushing — flush() resets
     // the player's timeline, and Flux TTS wants that offset to record where the
@@ -81,6 +116,18 @@ export function createConversation({ onState, onTranscript, onLevel, onError, re
     const heardMs = player?.playedMs ?? 0;
     player?.flush();
     tts?.interrupt(heardMs);
+    // The endpoint tells you which wire message just went out: /v2/speak sends
+    // Interrupt + playback_offset (and answers with SpeechInterrupted), /v1/speak
+    // sends a bare Clear and reports nothing back. "response aborted" means the
+    // responder was still producing — with llmResponder, the LLM request is
+    // cancelled server-side too.
+    diag(
+      "barge-in",
+      `cut ${cutState} @${Math.round(heardMs)}ms`,
+      `via ${reason} · turn #${Number.isNaN(cutTurn) ? "—" : cutTurn} abandoned · ` +
+        `${droppedFlushes} flush(es) dropped · ` +
+        `${aborted ? "response aborted · " : ""}${tts?.endpoint ?? "no socket"}`
+    );
   }
 
   // Decide whether playback for the current turn is truly finished. Because a
@@ -88,11 +135,33 @@ export function createConversation({ onState, onTranscript, onLevel, onError, re
   // sentences — that's a gap, not the end. We only return to "listening" once
   // ALL of these hold: the responder has stopped generating, every flush has
   // been acknowledged (so no more audio is coming), and the player has drained.
+  //
+  // This is the counterpart to EndOfTurn: EOT ends the *user's* turn, this ends
+  // the *agent's*. When the UI seems stuck on "speaking", the diagnostic below
+  // names the exact latch still holding it there.
   function maybeSettle() {
-    if (generating) return;
-    if (outstandingFlushes > 0) return;
-    if (player?.isPlaying) return;
-    if (state === "speaking" || state === "thinking") setState("listening");
+    const blocked = generating
+      ? "responder still generating"
+      : outstandingFlushes > 0
+        ? `${outstandingFlushes} flush(es) outstanding`
+        : player?.isPlaying
+          ? "player still draining"
+          : null;
+
+    if (blocked) {
+      // maybeSettle() runs on every Flushed ack and every player drain, so only
+      // log when the answer actually changes — otherwise a multi-sentence reply
+      // buries the trace in identical rows.
+      if (blocked !== lastSettleBlock) diag("turn", "not settled", blocked);
+      lastSettleBlock = blocked;
+      return;
+    }
+
+    lastSettleBlock = null;
+    if (state === "speaking" || state === "thinking") {
+      diag("turn", "turn settled", "generation done, flushes acked, player drained");
+      setState("listening");
+    }
   }
 
   // Click-driven barge-in: the same cut-off as voice barge-in, but triggered by
@@ -103,7 +172,7 @@ export function createConversation({ onState, onTranscript, onLevel, onError, re
   // commitTurn() reply is guaranteed to be discarded.
   function interruptResponse() {
     if (state !== "speaking" && state !== "thinking") return;
-    interrupt();
+    interrupt("stop-button");
     setState("listening");
   }
 
@@ -114,14 +183,17 @@ export function createConversation({ onState, onTranscript, onLevel, onError, re
     switch (msg.event) {
       case "StartOfTurn":
         // The user began a new turn. If the agent was talking, cut it off.
-        interrupt();
+        diag("turn", `StartOfTurn #${msg.turn_index ?? "?"}`);
+        interrupt("StartOfTurn");
         currentTurn = "";
         setState("listening");
         onTranscript?.({ interim: "", committed: false });
         break;
 
       case "Update":
-        // Interim transcription of the in-progress turn.
+        // Interim transcription of the in-progress turn. Deliberately *not*
+        // diagnosed: Update fires every few words and would bury every other
+        // event. Watch the interim transcript line instead.
         currentTurn = msg.transcript || "";
         onTranscript?.({ interim: currentTurn, committed: false });
         break;
@@ -129,19 +201,23 @@ export function createConversation({ onState, onTranscript, onLevel, onError, re
       case "EagerEndOfTurn":
         // Deepgram thinks the user *might* be done. A real app can start
         // preparing (e.g. fire the LLM request) here and cancel on TurnResumed.
-        // For the echo demo there's nothing to pre-warm.
+        // For the echo demo there's nothing to pre-warm — but the diagnostic
+        // shows how much of a head start the eager signal would have bought.
+        diag("turn", `EagerEndOfTurn #${msg.turn_index ?? "?"}`, "nothing pre-warmed in this demo");
         break;
 
       case "TurnResumed":
         // False alarm — the user kept talking. Cancel anything we started
         // speaking speculatively.
-        interrupt();
+        diag("turn", `TurnResumed #${msg.turn_index ?? "?"}`, "eager end was a false alarm");
+        interrupt("TurnResumed");
         setState("listening");
         break;
 
       case "EndOfTurn":
         // The user is done. Commit the turn and respond.
         currentTurn = msg.transcript || currentTurn;
+        diag("turn", `EndOfTurn #${msg.turn_index ?? "?"}`, JSON.stringify(currentTurn));
         onTranscript?.({ interim: currentTurn, committed: true });
         commitTurn(msg.turn_index ?? -1, currentTurn);
         break;
@@ -151,16 +227,27 @@ export function createConversation({ onState, onTranscript, onLevel, onError, re
   async function commitTurn(turnIndex, text) {
     const clean = (text || "").trim();
     if (!clean) {
+      diag("turn", `turn #${turnIndex} dropped`, "empty transcript — nothing to respond to");
       setState("listening");
       return;
     }
     activeTurnIndex = turnIndex;
     setState("thinking");
     generating = true;
+    // Fresh turn, fresh settle bookkeeping — its first latch should always log.
+    lastSettleBlock = null;
 
     // Fresh abort controller for this response so barge-in can cancel it.
     const controller = new AbortController();
     responseAbort = controller;
+
+    // Text queued with speak() since the last flush — diagnostics-only, so each
+    // Speak + Flush row can show the unit of speech it sent.
+    let queued = "";
+    const speak = (t) => {
+      tts?.speak(t);
+      queued += queued ? ` ${t}` : t;
+    };
 
     // Every flush is one unit of audio still owed to us — count it so
     // maybeSettle() knows the turn isn't over just because the player ran dry
@@ -169,20 +256,32 @@ export function createConversation({ onState, onTranscript, onLevel, onError, re
       if (activeTurnIndex !== turnIndex) return;
       tts?.flush();
       outstandingFlushes++;
+      // One row per speakable unit makes the streaming granularity visible —
+      // whether audio started on the first sentence or waited for the whole
+      // reply.
+      diag("tts", `Speak + Flush (${outstandingFlushes} outstanding)`, JSON.stringify(queued));
+      queued = "";
     };
 
     try {
       const reply = await respond(clean, {
         signal: controller.signal,
-        speak: (t) => tts?.speak(t),
+        speak,
         flush: countedFlush,
       });
       // If the user barged in while we were "thinking", abandon this reply.
-      if (activeTurnIndex !== turnIndex) return;
+      if (activeTurnIndex !== turnIndex) {
+        diag(
+          "barge-in",
+          `reply abandoned (turn #${turnIndex})`,
+          "turn-index guard dropped a response that finished after the barge-in"
+        );
+        return;
+      }
       // A responder either returns a string to speak, or streamed it itself via
       // the sink above (and returned nothing).
       if (typeof reply === "string" && reply.trim()) {
-        tts?.speak(reply);
+        speak(reply);
         countedFlush();
       }
       // player.onStart flips us to "speaking"; maybeSettle() returns us to
@@ -206,6 +305,8 @@ export function createConversation({ onState, onTranscript, onLevel, onError, re
   // --- lifecycle --------------------------------------------------------------
   async function start() {
     if (state !== "idle" && state !== "error") return;
+    // Restart the trace so timestamps read as "time since this session began".
+    stamp = createDiagnosticStamp();
     setState("connecting");
     try {
       const token = await getToken();
@@ -235,13 +336,40 @@ export function createConversation({ onState, onTranscript, onLevel, onError, re
         // audio for it. That's how we know the last sentence's audio is in the
         // player and the turn can settle.
         onControl: (msg) => {
-          if (msg?.type === "Flushed" && outstandingFlushes > 0) {
-            outstandingFlushes--;
-            maybeSettle();
+          if (msg?.type === "Flushed") {
+            if (outstandingFlushes > 0) {
+              outstandingFlushes--;
+              diag("tts", `Flushed (${outstandingFlushes} outstanding)`);
+              maybeSettle();
+            } else {
+              // A flush for an abandoned turn. interrupt() zeroed the counter,
+              // so this ack is correctly ignored — it must not settle a turn
+              // that barge-in already ended.
+              diag("tts", "Flushed ignored", "late ack for a barged-in turn");
+            }
+            return;
+          }
+          // Flux TTS answers an Interrupt with an exact account of what the
+          // listener did and didn't hear. That reconciliation is the whole
+          // reason we send playback_offset — surface it (Best practice #4).
+          if (msg?.type === "SpeechInterrupted") {
+            diag(
+              "barge-in",
+              "SpeechInterrupted",
+              `spoken: ${JSON.stringify(msg.text_spoken ?? "")} · ` +
+                `remaining: ${JSON.stringify(msg.text_remaining ?? "")}`
+            );
+            return;
+          }
+          if (msg?.type === "Warning") {
+            diag("tts", "Warning", msg.description || msg.message || "");
           }
         },
         onError: (e) => onError?.(e),
       });
+      // Header row for the trace: which TTS generation this session is on
+      // decides whether barge-in reports SpeechInterrupted at all.
+      diag("tts", `socket open ${tts.endpoint}`, `voice ${TTS.model} @ ${TTS.sampleRate} Hz`);
 
       stt = connectSTT({
         token,
@@ -278,6 +406,7 @@ export function createConversation({ onState, onTranscript, onLevel, onError, re
     activeTurnIndex = -1;
     generating = false;
     outstandingFlushes = 0;
+    lastSettleBlock = null;
     responseAbort = null;
     setState("idle");
   }

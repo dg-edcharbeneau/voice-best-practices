@@ -23,6 +23,7 @@ rendering.
 | Mic / STT / TTS / player / token / config | [`wwwroot/js/`](VoiceBestPractices.Client/wwwroot/js/) (ported from vanilla) |
 | Audio-thread capture worklet | [`wwwroot/js/pcm-worklet.js`](VoiceBestPractices.Client/wwwroot/js/pcm-worklet.js) |
 | **JS-isolation bridge** — orchestrator callbacks ⇄ .NET | [`wwwroot/js/voice-interop.js`](VoiceBestPractices.Client/wwwroot/js/voice-interop.js) |
+| Turn-taking / barge-in trace (event shape + console mirror) | [`wwwroot/js/diagnostics.js`](VoiceBestPractices.Client/wwwroot/js/diagnostics.js) |
 | **Session service** — holds state, owns the interop, the analog of React's `useConversation` | [`Voice/ConversationService.cs`](VoiceBestPractices.Client/Voice/ConversationService.cs) |
 | **Interop wrapper** — typed JS-isolation module, `DotNetObjectReference`, teardown | [`Voice/ConversationInterop.cs`](VoiceBestPractices.Client/Voice/ConversationInterop.cs) |
 | State enum + labels + friendly errors (the "edge" logic, in C#) | [`Voice/ConversationState.cs`](VoiceBestPractices.Client/Voice/ConversationState.cs) |
@@ -62,11 +63,55 @@ all interop runs in `OnAfterRenderAsync`/event handlers (never during prerender)
   [`MicMeter`](VoiceBestPractices.Client/Components/MicMeter.razor) ·
   [`Controls`](VoiceBestPractices.Client/Components/Controls.razor) ·
   [`Transcript`](VoiceBestPractices.Client/Components/Transcript.razor) ·
+  [`Diagnostics`](VoiceBestPractices.Client/Components/Diagnostics.razor) ·
   [`ErrorBanner`](VoiceBestPractices.Client/Components/ErrorBanner.razor)
 
 Data flows **down** via `[Parameter]`; events flow **up** via `EventCallback`. Button
 enable/disable is derived purely from the machine state, so the controls can't drift
 out of sync with what's actually possible.
+
+### Diagnostics
+
+Turn-taking and barge-in are the hardest behaviors here and the least visible —
+the status label says "speaking", then it doesn't, and everything interesting
+happened in between. The **Diagnostics** panel (open by default, under the
+transcript) makes the loop legible:
+
+| Channel | What it shows |
+|---|---|
+| `turn` | every Flux `TurnInfo` event except `Update`, plus why a turn has or hasn't settled |
+| `barge-in` | each cut-off: what it interrupted, `playedMs`, the abandoned turn index, whether an in-flight response was aborted, and Deepgram's `SpeechInterrupted` reply (`text_spoken` / `text_remaining`) |
+| `tts` | each `Speak` + `Flush` pair and its ack, so streaming granularity is visible |
+| `state` | every state-machine transition |
+
+`EndOfTurn` and `turn settled` are the two halves of turn-taking: the first ends
+the *user's* turn, the second ends the *agent's*. When the UI looks stuck on
+"speaking", the `not settled` rows name the exact latch holding it there
+(responder still generating, flushes outstanding, or player draining).
+
+The orchestrator emits these through one more callback (`onDiagnostic`) next to
+`onState` / `onTranscript` / `onError`, so `wwwroot/js/` stays framework-agnostic.
+The path to the screen is the same one every other callback takes:
+
+1. [`voice-interop.js`](VoiceBestPractices.Client/wwwroot/js/voice-interop.js)
+   mirrors each event to the console and relays it to `[JSInvokable] OnDiagnostic`.
+2. [`ConversationService`](VoiceBestPractices.Client/Voice/ConversationService.cs)
+   appends it to a bounded buffer (`MaxDiagnostics = 200`; the oldest rows fall off)
+   and raises `Changed`.
+3. [`Diagnostics.razor`](VoiceBestPractices.Client/Components/Diagnostics.razor)
+   renders the rows newest-first — pure CSS, no JS interop.
+
+The console mirror is gated in
+[`wwwroot/js/config.js`](VoiceBestPractices.Client/wwwroot/js/config.js):
+
+```js
+export const DIAGNOSTICS = {
+  console: true, // mirror every event to console.debug
+};
+```
+
+Console rows land at `console.debug`, so enable **Verbose** in DevTools to see
+them. Set `console: false` to keep the panel while silencing the console.
 
 ## Quick start
 
